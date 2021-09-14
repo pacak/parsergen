@@ -163,20 +163,18 @@ pub fn fold_digits<T>(digits: &[u8]) -> Result<T>
 where
     T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8>,
 {
-    let mut invalid = false;
-    let r = digits.iter().fold(0.into(), |acc, d| {
-        let d = d.overflowing_sub('0' as u8).0;
-        invalid |= d > 9;
-        acc * 10.into() + d.into()
-    });
-    if invalid {
-        Err(Error {
-            _msg: "invalid digits",
-            _payload: digits,
-        })
-    } else {
-        Ok(r)
+    let mut acc = 0.into();
+    for c in digits.iter() {
+        let d = c.overflowing_sub('0' as u8).0;
+        if d > 9 {
+            return Err(Error {
+                _msg: "invalid digits",
+                _payload: digits,
+            });
+        }
+        acc = acc * 10.into() + d.into();
     }
+    Ok(acc)
 }
 
 pub fn unfold_digits<T>(val: T, res: &mut [u8])

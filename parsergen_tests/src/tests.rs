@@ -156,3 +156,82 @@ fn x11() {
 
     panic!("{:?}", <Sliced<X11>>::from(msg));
 }
+
+#[derive(Eq, PartialEq, Parsergen, Debug)]
+struct X12 {
+    #[parsergen(decimal: 3)]
+    u8_: u8,
+    #[parsergen(decimal: 5)]
+    u16_: u16,
+    #[parsergen(decimal: 10)]
+    u32_: u32,
+    #[parsergen(decimal: 20)]
+    u64_: u64,
+    #[parsergen(decimal: 20)]
+    usize_: usize,
+}
+
+#[test]
+fn x12() {
+    let x = X12 {
+        u8_: u8::MAX,
+        u16_: u16::MAX,
+        u32_: u32::MAX,
+        u64_: u64::MAX,
+        usize_: usize::MAX,
+    };
+    let msg = b"2556553542949672951844674407370955161518446744073709551615";
+    roundtrip(msg, x);
+}
+
+#[derive(Eq, PartialEq, Parsergen, Debug)]
+struct X13 {
+    #[parsergen(decimal: 4)]
+    u8_: u8,
+    #[parsergen(decimal: 6)]
+    u16_: u16,
+    #[parsergen(decimal: 11)]
+    u32_: u32,
+    #[parsergen(decimal: 21)]
+    u64_: u64,
+    #[parsergen(decimal: 21)]
+    usize_: usize,
+}
+
+#[test]
+fn x13() {
+    let x = X13 {
+        u8_: u8::MAX,
+        u16_: u16::MAX,
+        u32_: u32::MAX,
+        u64_: u64::MAX,
+        usize_: usize::MAX,
+    };
+    let msg = b"025506553504294967295018446744073709551615018446744073709551615";
+    roundtrip(msg, x);
+}
+
+#[derive(Eq, PartialEq, Parsergen, Debug)]
+struct X14 {
+    val: Option<X0>,
+}
+
+#[test]
+fn x14() {
+    roundtrip(b"    ", X14 { val: None });
+    roundtrip(
+        b"1234",
+        X14 {
+            val: Some(X0 { val: 1234 }),
+        },
+    );
+}
+
+#[derive(Eq, PartialEq, Parsergen, Debug)]
+struct X15(#[parsergen(decimal: 11)] u32);
+
+#[test]
+fn x15() {
+    roundtrip::<Option<X15>>(b"           ", None);
+    roundtrip::<Option<X15>>(b"00000000001", Some(X15(1)));
+}
