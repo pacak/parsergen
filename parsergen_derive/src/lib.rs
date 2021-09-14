@@ -227,7 +227,7 @@ impl FieldInfo {
                 span,
                 des: quote_spanned! { span => let #var = <#field_type as ::parsergen::Parsergen>::des(&#raw)?; },
                 ser: quote_spanned! { span => <#field_type as ::parsergen::Parsergen>::ser(#var, &mut #raw); },
-                slice: slice_fn(quote!( &::parsergen::PrettyBytes(& #raw))),
+                slice: slice_fn(quote!( &<::parsergen::Sliced<#field_type>>::from(& #raw))),
                 var,
             })
         }

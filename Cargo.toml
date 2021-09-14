@@ -17,4 +17,4 @@ name = "bench"
 harness = false
 
 [workspace]
-members = ["parsergen_derive", "parsergen_impl"]
+members = ["parsergen_derive", "parsergen_impl", "parsergen_tests"]

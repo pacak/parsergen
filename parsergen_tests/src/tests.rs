@@ -1,4 +1,4 @@
-use crate::Parsergen;
+use parsergen::*;
 
 #[track_caller]
 fn roundtrip<T>(raw: &[u8], parsed: T)
@@ -134,4 +134,25 @@ enum X10 {
 fn x10() {
     roundtrip(b"lo", X10::F1);
     roundtrip(b"he", X10::F2(X8));
+}
+
+#[derive(Eq, PartialEq, Parsergen, Debug)]
+struct X11 {
+    x2: X2,
+    x10: X10,
+}
+
+#[test]
+fn x11() {
+    let x11 = X11 {
+        x2: X2 {
+            val: [123, 456, 789],
+        },
+        x10: X10::F1,
+    };
+
+    let msg = b"123456789lo";
+    roundtrip(msg, x11);
+
+    panic!("{:?}", <Sliced<X11>>::from(msg));
 }
