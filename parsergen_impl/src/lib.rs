@@ -30,7 +30,9 @@ pub trait Parsergen {
     where
         Self: Sized;
     fn ser(&self, raw: &mut [u8]);
-    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
+    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", PrettyBytes(raw))
+    }
 }
 
 // {{{
