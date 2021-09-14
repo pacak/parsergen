@@ -314,3 +314,7 @@ pub fn encode<T: Parsergen>(val: &T) -> Vec<u8> {
     val.ser(&mut res);
     res
 }
+
+pub fn decode<T: Parsergen>(raw: &[u8]) -> Option<T> {
+    T::des(raw).ok()
+}
