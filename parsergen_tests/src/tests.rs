@@ -6,6 +6,9 @@ where
     T: Parsergen + std::fmt::Debug + Eq + PartialEq,
 {
     let mut buf = raw.to_vec();
+    for c in buf.iter_mut() {
+        *c = 0;
+    }
     T::ser(&parsed, &mut buf);
     assert_eq!(&buf, &raw);
     assert_eq!(parsed, T::des(raw).unwrap());
@@ -153,8 +156,6 @@ fn x11() {
 
     let msg = b"123456789lo";
     roundtrip(msg, x11);
-
-    panic!("{:?}", <Sliced<X11>>::from(msg));
 }
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
@@ -234,4 +235,17 @@ struct X15(#[parsergen(decimal: 11)] u32);
 fn x15() {
     roundtrip::<Option<X15>>(b"           ", None);
     roundtrip::<Option<X15>>(b"00000000001", Some(X15(1)));
+}
+
+#[test]
+fn cents() {
+    roundtrip::<Cents<8>>(b" 1234.56", Cents::from(123456));
+}
+
+#[derive(Eq, PartialEq, Parsergen, Debug)]
+struct X16(#[parsergen(via: Cents<5>)] i64);
+
+#[test]
+fn x16() {
+    roundtrip::<X16>(b" 1.23", X16(123));
 }

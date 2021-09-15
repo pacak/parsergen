@@ -184,7 +184,7 @@ impl FieldInfo {
                 (None, Annotation::ViaIso(iso)) => Ok(FieldInfo {
                     width: quote!( <#iso as ::parsergen::Parsergen>::WIDTH ),
                     des: quote!( let #var = <#field_type>::from(<#iso as ::parsergen::Parsergen>::des(&#raw)?); ),
-                    ser: quote!( #iso::from(*#var).ser(&mut #raw); ),
+                    ser: quote!( <#iso>::from(*#var).ser(&mut #raw); ),
                     slice: slice_fn(quote!( & <::parsergen::Sliced<#iso>>::from(&#raw))),
                     span,
                     var,

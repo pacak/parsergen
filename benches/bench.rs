@@ -149,6 +149,15 @@ fn b_unsigned_decimal(c: &mut Criterion) {
     });
 }
 
+fn b_cents(c: &mut Criterion) {
+    let input = b" 00001234.56";
+    c.bench_function("cents 12", |b| {
+        b.iter(|| {
+            Cents::<12>::des(black_box(input)).unwrap();
+        })
+    });
+}
+
 fn b_time(c: &mut Criterion) {
     let input = b"123456012345";
     c.bench_function("time12 native", |b| {
@@ -190,6 +199,7 @@ fn b_fut(c: &mut Criterion) {
 criterion_group!(
     primitive,
     b_unsigned_decimal,
+    b_cents,
     b_fut,
     b_time,
     b_time_select,

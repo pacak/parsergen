@@ -318,3 +318,66 @@ pub fn encode<T: Parsergen>(val: &T) -> Vec<u8> {
 pub fn decode<T: Parsergen>(raw: &[u8]) -> Option<T> {
     T::des(raw).ok()
 }
+
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+/// Given amount in cents will render it as CNT wide field:
+/// Cents<5>(1) is rendered as " 0.01"
+/// 0th symbol = sign, ' ' for postive, '-' for negative
+pub struct Cents<const CNT: usize>(pub i64);
+impl<const CNT: usize> From<i64> for Cents<CNT> {
+    fn from(val: i64) -> Self {
+        Cents(val)
+    }
+}
+
+impl<const CNT: usize> From<Cents<CNT>> for i64 {
+    fn from(val: Cents<CNT>) -> Self {
+        val.0
+    }
+}
+
+impl<const CNT: usize> Parsergen for Cents<CNT> {
+    const WIDTH: usize = CNT;
+
+    fn des(raw: &[u8]) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let sign = match raw[0] {
+            b' ' => 1,
+            b'0' => 1,
+            b'-' => -1,
+            _ => {
+                return Err(Error {
+                    _msg: "invalid sign",
+                    _payload: raw,
+                })
+            }
+        };
+        if raw[CNT - 3] != b'.' {
+            return Err(Error {
+                _msg: "missing dot in cents",
+                _payload: raw,
+            });
+        }
+
+        let num1: u64 = fold_digits(&raw[1..CNT - 3])?;
+        let num2: u64 = fold_digits(&raw[CNT - 2..])?;
+
+        Ok(Cents(sign * (num1 as i64 * 100 + num2 as i64)))
+    }
+
+    fn ser(&self, raw: &mut [u8]) {
+        if self.0 >= 0 {
+            raw[0] = b' ';
+        } else {
+            raw[0] = b'-';
+        }
+        let num = self.0.abs();
+        let num1 = num / 100;
+        let num2 = num % 100;
+        raw[CNT - 3] = b'.';
+        unfold_digits(num1, &mut raw[1..CNT - 3]);
+        unfold_digits(num2, &mut raw[CNT - 2..]);
+    }
+}
