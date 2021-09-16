@@ -185,6 +185,24 @@ fn b_timev(c: &mut Criterion) {
     });
 }
 
+fn b_fold_isin(c: &mut Criterion) {
+    let input = b"AU0000XVGZA3";
+    c.bench_function("fold_isin", |b| {
+        b.iter(|| {
+            fold_isin(black_box(*input)).unwrap();
+        })
+    });
+}
+
+fn b_unfold_isin(c: &mut Criterion) {
+    let input = fold_isin(*b"AU0000XVGZA3").unwrap();
+    c.bench_function("unfold_isin", |b| {
+        b.iter(|| {
+            unfold_isin(black_box(input));
+        })
+    });
+}
+
 // goat to beat: 138ns
 fn b_fut(c: &mut Criterion) {
     let input = b"B6014KR4101Q5000300000000G110000000 00000000182 00000000000 00000000000 00000000000 00000000000119255 00000305343 00000119275 46592000000 15184000000 0000000000000000179200000000000000000000046590000000000000000125632000000 00182";
@@ -199,6 +217,8 @@ fn b_fut(c: &mut Criterion) {
 criterion_group!(
     primitive,
     b_unsigned_decimal,
+    b_fold_isin,
+    b_unfold_isin,
     b_cents,
     b_fut,
     b_time,

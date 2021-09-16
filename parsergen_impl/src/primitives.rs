@@ -275,3 +275,101 @@ where
     res[0] = if val.positive() { b' ' } else { b'-' };
     val.unfold(&mut res[1..]);
 }
+
+pub struct ISIN(pub u64);
+/// folds a valid ISIN into u64, see [unfold_isin]
+pub fn fold_isin(mut raw: [u8; 12]) -> Option<ISIN> {
+    let mut res = 0;
+    for c in raw.iter_mut() {
+        if (b'0'..=b'9').contains(&c) {
+            *c = *c - b'0';
+        } else if (b'A'..=b'Z').contains(&c) {
+            *c = *c - b'A' + 10;
+        } else {
+            return None;
+        }
+    }
+    let digits = raw;
+    struct Dig {
+        sum: u8,
+        cnt5: u8,
+    }
+    let mut sum = (Dig { sum: 0, cnt5: 0 }, Dig { sum: 0, cnt5: 0 });
+    for d in Digits::new(&digits) {
+        if d >= 5 {
+            sum.0.cnt5 += 1;
+        }
+        sum.0.sum += d;
+        sum = (sum.1, sum.0)
+    }
+    if (sum.0.sum * 2 - sum.0.cnt5 * 9 + sum.1.sum) % 10 != 0 {
+        return None;
+    }
+
+    for c in digits.iter() {
+        res = res * 36 + *c as u64;
+    }
+    Some(ISIN(res))
+}
+
+/// unfolds a valid ISIN into an array of ASCII bytes, see [fold_isin]
+pub fn unfold_isin(isin: ISIN) -> [u8; 12] {
+    let mut isin = isin.0;
+    let mut res = [0; 12];
+    for r in res.iter_mut().rev() {
+        let c = isin % 36;
+        isin /= 36;
+        if c < 10 {
+            *r = c as u8 + b'0';
+        } else {
+            *r = c as u8 + b'A' - 10;
+        }
+    }
+    res
+}
+
+#[test]
+fn test_fold_unfold() {
+    let msg = b"AU0000XVGZA3";
+
+    let folded = fold_isin(*msg).unwrap();
+    assert_eq!(&unfold_isin(folded), msg);
+}
+
+struct Digits<'a>(Option<u8>, &'a [u8]);
+
+impl<'a> Digits<'a> {
+    pub fn new(vals: &'a [u8]) -> Self {
+        Digits(None, vals)
+    }
+}
+impl<'a> Iterator for Digits<'a> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(n) = self.0 {
+            self.0 = None;
+            return Some(n);
+        }
+        match self.1 {
+            [d, rest @ ..] => {
+                if *d < 10 {
+                    self.1 = rest;
+                    Some(*d)
+                } else {
+                    self.0 = Some(d % 10);
+                    self.1 = rest;
+                    Some(d / 10)
+                }
+            }
+            _ => return None,
+        }
+    }
+}
+
+#[test]
+fn test_digits() {
+    let digits = [3, 10, 12, 15];
+    let r = Digits::new(&digits).collect::<Vec<_>>();
+    assert_eq!(&r, &[3, 1, 0, 1, 2, 1, 5]);
+}

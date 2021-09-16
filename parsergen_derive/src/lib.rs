@@ -326,6 +326,7 @@ fn impl_unit(name: Ident, attrs: &[Attribute]) -> Result<TokenStream> {
     Ok(quote! {
         impl ::parsergen::Parsergen for #name {
             const WIDTH: usize = #width;
+            #[inline]
             fn des<'a>(raw: &[u8]) -> ::parsergen::Result<#name> {
                 if &raw != &[ #( #pat),*] {
                     return Err(::parsergen::Error {_msg: #mismatch, _payload: raw})
@@ -333,6 +334,7 @@ fn impl_unit(name: Ident, attrs: &[Attribute]) -> Result<TokenStream> {
                 Ok(#name)
             }
 
+            #[inline]
             fn ser(&self, raw: &mut [u8]) {
                 for (c, p) in raw.iter_mut().zip([ #( #pat ),*]) {
                     *c = p
@@ -364,11 +366,13 @@ fn impl_enum(name: Ident, variants: Punctuated<Variant, Token![,]>) -> Result<To
         impl ::parsergen::Parsergen for #name {
             const WIDTH: usize = #width;
 
+            #[inline]
             fn des<'a>(raw: &[u8]) -> ::parsergen::Result<#name> {
                 #(#checks)*
                 Err(::parsergen::Error{_msg: #mismatch, _payload: raw })
             }
 
+            #[inline]
             fn ser(&self, raw: &mut [u8]) {
                 match self {
                     #(#stores),*
@@ -449,12 +453,14 @@ fn impl_struct(
         impl ::parsergen::Parsergen for #name {
             const WIDTH: usize = #width;
 
+            #[inline]
             fn des<'a>(raw: &[u8]) -> ::parsergen::Result<#name> {
                 #ranges
                 #(#parse_fields)*
                 Ok(#produce_result)
             }
 
+            #[inline]
             fn ser(&self, raw: &mut [u8]) {
                 #ranges
                 #split_parameter
