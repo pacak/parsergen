@@ -276,6 +276,7 @@ where
     val.unfold(&mut res[1..]);
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct ISIN(pub u64);
 /// folds a valid ISIN into u64, see [unfold_isin]
 pub fn fold_isin(mut raw: [u8; 12]) -> Option<ISIN> {

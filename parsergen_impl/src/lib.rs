@@ -87,8 +87,16 @@ macro_rules! derive_fixed {
         impl<const WIDTH: usize> Parsergen for FixedT<$ty, WIDTH> {
             const WIDTH: usize = WIDTH;
 
+            #[inline]
             fn des(raw: &[u8]) -> Result<Self> {
-                Ok(FixedT($fold(raw)?))
+                if raw.len() == WIDTH {
+                    Ok(FixedT($fold(raw)?))
+                } else {
+                    Err(Error {
+                        _msg: "invalid width",
+                        _payload: raw,
+                    })
+                }
             }
 
             fn ser(&self, res: &mut [u8]) {
@@ -129,6 +137,7 @@ where
 {
     const WIDTH: usize = WIDTH * CNT;
 
+    #[inline]
     fn des(raw: &[u8]) -> Result<Self> {
         let mut res = [T::default(); CNT];
         for (ix, raw) in raw.chunks(WIDTH).enumerate() {
@@ -379,5 +388,34 @@ impl<const CNT: usize> Parsergen for Cents<CNT> {
         raw[CNT - 3] = b'.';
         unfold_digits(num1, &mut raw[1..CNT - 3]);
         unfold_digits(num2, &mut raw[CNT - 2..]);
+    }
+}
+
+impl Parsergen for primitives::ISIN {
+    const WIDTH: usize = 12;
+
+    fn des(raw: &[u8]) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        use std::convert::TryFrom;
+        let err = Error {
+            _msg: "Not an ISIN",
+            _payload: raw,
+        };
+        match <[u8; 12]>::try_from(raw) {
+            Ok(buf) => match fold_isin(buf) {
+                Some(isin) => Ok(isin),
+                None => Err(err),
+            },
+            Err(_) => Err(err),
+        }
+    }
+
+    fn ser(&self, raw: &mut [u8]) {
+        let buf = primitives::unfold_isin(*self);
+        for (t, s) in raw.iter_mut().zip(buf.iter()) {
+            *t = *s;
+        }
     }
 }
