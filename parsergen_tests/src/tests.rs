@@ -249,3 +249,26 @@ struct X16(#[parsergen(via: Cents<5>)] i64);
 fn x16() {
     roundtrip::<X16>(b" 1.23", X16(123));
 }
+
+/* TODO
+#[derive(Eq, PartialEq, Parsergen, Debug)]
+#[parsergen(via: X16)]
+struct X17(i64);
+
+impl From<X16> for X17 {
+    fn from(v: X16) -> Self {
+        Self(v.0)
+    }
+}
+
+impl From<X17> for X16 {
+    fn from(v: X17) -> Self {
+        Self(v.0)
+    }
+}
+
+#[test]
+fn x17() {
+    roundtrip::<X17>(b" 1.23", X17(123));
+}
+*/
