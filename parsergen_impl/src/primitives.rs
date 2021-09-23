@@ -25,8 +25,62 @@ pub fn write_time12(time: u64, res: &mut [u8]) {
     }
 }
 
+/// Write time given in microseconds into HHMMSSuu format,
+///
+/// panics if res is not 8 bytes long
+/// panics if duration is above 24 hours
+pub fn write_time8(time: u64, res: &mut [u8]) {
+    assert!(res.len() == 8);
+    assert!(time <= 86400000000); // 24:00:00.000000
+    let seconds = time / 1_000_000;
+    let mut useconds = time % 1_000_000;
+    let h = seconds / 3600;
+    let m = (seconds / 60) % 60;
+    let s = seconds % 60;
+    res[0] = h as u8 / 10 + '0' as u8;
+    res[1] = h as u8 % 10 + '0' as u8;
+    res[2] = m as u8 / 10 + '0' as u8;
+    res[3] = m as u8 % 10 + '0' as u8;
+    res[4] = s as u8 / 10 + '0' as u8;
+    res[5] = s as u8 % 10 + '0' as u8;
+    for r in res[6..].iter_mut().rev() {
+        *r = (useconds % 10) as u8 + '0' as u8;
+        useconds /= 10;
+    }
+}
+
+pub fn read_time8(raw: &[u8]) -> Result<u64> {
+    let mut digits: [u8; 8] = [0; 8];
+    let mut invalid = false;
+    for (digit, chr) in digits.iter_mut().zip(raw) {
+        *digit = chr.overflowing_sub('0' as u8).0;
+        invalid |= *digit > 9;
+    }
+    if invalid {
+        return Err(Error {
+            _msg: "Invalid time8",
+            _payload: raw,
+        });
+    }
+    let [h1, h2, m1, m2, s1, s2, u1, u2] = digits;
+    let h = h1 * 10 + h2;
+    let m = m1 * 10 + m2;
+    let s = s1 * 10 + s2;
+    let u = u1 as u64 * 10 + u2 as u64;
+    Ok(((h as u64 * 60 + m as u64) * 60 + s as u64) * 1_000_000 + u)
+}
+
 #[test]
-fn read_write_time() {
+fn read_write_time8() {
+    let mut output = [0u8; 8];
+    let expected = b"12345612";
+    let t = read_time8(expected).unwrap();
+    write_time8(t, &mut output);
+    assert_eq!(expected, &output);
+}
+
+#[test]
+fn read_write_time12() {
     let mut output = [0u8; 12];
     let expected = b"123456123456";
     let t = read_time12(expected).unwrap();
