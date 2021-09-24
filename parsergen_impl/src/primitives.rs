@@ -260,6 +260,7 @@ where
     });
     match digits[0] as char {
         ' ' if !invalid_digits => Ok(r),
+        '+' if !invalid_digits => Ok(r),
         '-' if !invalid_digits => Ok(-r),
         _ => Err(Error {
             _msg: "invalid digits",
