@@ -16,5 +16,11 @@ criterion = { version = "0.3.5", features=["html_reports"] }
 name = "bench"
 harness = false
 
+[[bench]]
+name = "time"
+harness = false
+
+
+
 [workspace]
 members = ["parsergen_derive", "parsergen_impl", "parsergen_tests"]

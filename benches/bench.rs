@@ -1,6 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use parsergen::primitives::*;
+use parsergen::time::{read_time12, write_time12};
 use parsergen::*;
 
 #[derive(Parsergen, Copy, Clone, Default, Debug)]
@@ -158,33 +159,6 @@ fn b_cents(c: &mut Criterion) {
     });
 }
 
-fn b_time(c: &mut Criterion) {
-    let input = b"123456012345";
-    c.bench_function("time12 native", |b| {
-        b.iter(|| {
-            read_time12_native(black_box(input)).unwrap();
-        })
-    });
-}
-
-fn b_time_select(c: &mut Criterion) {
-    let input = b"123456012345";
-    c.bench_function("time12", |b| {
-        b.iter(|| {
-            read_time12(black_box(input)).unwrap();
-        })
-    });
-}
-
-fn b_timev(c: &mut Criterion) {
-    let input = b"123456012345";
-    c.bench_function("time12_vec", |b| {
-        b.iter(|| {
-            read_time12_vec(black_box(input)).unwrap();
-        })
-    });
-}
-
 fn b_fold_isin(c: &mut Criterion) {
     let input = b"AU0000XVGZA3";
     c.bench_function("fold_isin", |b| {
@@ -209,10 +183,25 @@ fn b_fut(c: &mut Criterion) {
 
     c.bench_function("FutB6", |b| {
         b.iter(|| {
+            //          for _ in 0..1000000 {
             FutB6::des(black_box(input)).unwrap();
+            //          }
         })
     });
 }
+/*
+
+criterion_group! {
+    name = writes;
+    config = Criterion::default();
+    targets =
+        b_write_time_6,
+        b_write_time_8,
+        b_write_time_12v,
+        b_write_time_12n,
+        b_write_time_12,
+}
+*/
 
 criterion_group!(
     primitive,
@@ -221,8 +210,5 @@ criterion_group!(
     b_unfold_isin,
     b_cents,
     b_fut,
-    b_time,
-    b_time_select,
-    b_timev,
 );
 criterion_main!(primitive);

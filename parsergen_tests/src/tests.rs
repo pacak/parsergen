@@ -10,11 +10,12 @@ where
         *c = 0;
     }
     T::ser(&parsed, &mut buf);
-    assert_eq!(&buf, &raw);
-    assert_eq!(parsed, T::des(raw).unwrap());
+    assert_eq!(raw.len(), T::WIDTH);
+    assert_eq!(&buf, &raw, "while testing encoder");
+    assert_eq!(parsed, T::des(raw).unwrap(), "while testing decoder");
 }
 
-#[derive(Eq, PartialEq, Parsergen, Debug)]
+#[derive(Eq, PartialEq, Parsergen, Debug, Copy, Clone, Default)]
 struct X0 {
     #[parsergen(decimal: 4)]
     val: u32,
@@ -26,6 +27,16 @@ fn x0() {
 }
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
+struct X0a {
+    val: [X0; 2],
+}
+
+#[test]
+fn x0a() {
+    roundtrip(b"12345678", [X0 { val: 1234 }, X0 { val: 5678 }]);
+}
+
+#[derive(Eq, PartialEq, Parsergen, Debug)]
 struct X1(#[parsergen(decimal: 4)] u32);
 
 #[test]
@@ -33,7 +44,7 @@ fn x1() {
     roundtrip(b"0123", X1(123));
 }
 
-#[derive(Eq, PartialEq, Parsergen, Debug)]
+#[derive(Eq, PartialEq, Debug, Parsergen)]
 struct X2 {
     #[parsergen(decimal: 3)]
     val: [u32; 3],
@@ -78,13 +89,13 @@ fn x5() {
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
 struct X6 {
-    #[parsergen(hex: "010203")]
+    #[parsergen(hex: "a1A203")]
     val: (),
 }
 
 #[test]
 fn x6() {
-    roundtrip(&[1, 2, 3], X6 { val: () });
+    roundtrip(&[0xa1, 0xa2, 3], X6 { val: () });
 }
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
@@ -95,14 +106,20 @@ fn x7() {
     roundtrip(&[1, 2, 3], X7(()));
 }
 
-#[derive(Eq, PartialEq, Parsergen, Debug)]
+#[derive(Eq, PartialEq, Parsergen, Debug, Copy, Clone, Default)]
 #[parsergen(literal: "he")]
+/// doc
 struct X8;
 
 #[test]
 fn x8() {
     roundtrip(b"he", X8);
 }
+
+#[derive(Eq, PartialEq, Parsergen, Debug)]
+#[parsergen(literal: "hi")]
+/// doc
+struct X8a;
 
 impl From<X8> for () {
     fn from(_: X8) -> Self {
@@ -126,20 +143,24 @@ fn x9() {
     roundtrip(b"hehe", X9 { var: [(), ()] });
 }
 
-#[derive(Eq, PartialEq, Parsergen, Debug)]
+#[derive(Eq, PartialEq, Debug, Parsergen)]
 enum X10 {
     #[parsergen(literal: "lo")]
     F1,
     F2(X8),
+    F3 {
+        x8a: X8a,
+    },
 }
 
 #[test]
 fn x10() {
     roundtrip(b"lo", X10::F1);
     roundtrip(b"he", X10::F2(X8));
+    roundtrip(b"hi", X10::F3 { x8a: X8a });
 }
 
-#[derive(Eq, PartialEq, Parsergen, Debug)]
+#[derive(Eq, PartialEq, Debug, Parsergen)]
 struct X11 {
     x2: X2,
     x10: X10,
@@ -213,6 +234,34 @@ fn x13() {
 }
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
+struct X13i {
+    #[parsergen(decimal: 4)]
+    i8_: i8,
+    #[parsergen(decimal: 6, offset: 4)]
+    i16_: i16,
+    #[parsergen(decimal: 11)]
+    i32_: i32,
+    #[parsergen(decimal: 21)]
+    i64_: i64,
+    #[parsergen(decimal: 21)]
+    isize_: isize,
+}
+
+#[test]
+fn x13i() {
+    let x = X13i {
+        i8_: i8::MAX,
+        i16_: i16::MAX,
+        i32_: i32::MAX,
+        i64_: i64::MAX,
+        isize_: isize::MAX,
+    };
+    let msg = b" 127 32767 2147483647 09223372036854775807 09223372036854775807";
+
+    roundtrip(msg, x);
+}
+
+#[derive(Eq, PartialEq, Parsergen, Debug)]
 struct X14 {
     val: Option<X0>,
 }
@@ -237,6 +286,15 @@ fn x15() {
     roundtrip::<Option<X15>>(b"00000000001", Some(X15(1)));
 }
 
+#[derive(Eq, PartialEq, Parsergen, Debug)]
+struct X15i(#[parsergen(decimal: 11)] i32);
+
+#[test]
+fn x15i() {
+    roundtrip::<Option<X15>>(b"           ", None);
+    roundtrip::<Option<X15>>(b"00000000001", Some(X15(1)));
+}
+
 #[test]
 fn cents() {
     roundtrip::<Cents<8>>(b" 1234.56", Cents::from(123456));
@@ -249,26 +307,3 @@ struct X16(#[parsergen(via: Cents<5>)] i64);
 fn x16() {
     roundtrip::<X16>(b" 1.23", X16(123));
 }
-
-/* TODO
-#[derive(Eq, PartialEq, Parsergen, Debug)]
-#[parsergen(via: X16)]
-struct X17(i64);
-
-impl From<X16> for X17 {
-    fn from(v: X16) -> Self {
-        Self(v.0)
-    }
-}
-
-impl From<X17> for X16 {
-    fn from(v: X17) -> Self {
-        Self(v.0)
-    }
-}
-
-#[test]
-fn x17() {
-    roundtrip::<X17>(b" 1.23", X17(123));
-}
-*/

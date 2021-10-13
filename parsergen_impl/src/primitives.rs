@@ -1,226 +1,15 @@
 use crate::{Error, Result};
 use std::convert::TryInto;
 
-/// Write time given in microseconds into HHMMSSuuuuuu format,
-///
-/// panics if res is not 12 bytes long
-/// panics if duration is above 24 hours
-pub fn write_time12(time: u64, res: &mut [u8]) {
-    assert!(res.len() == 12);
-    assert!(time <= 86400000000); // 24:00:00.000000
-    let seconds = time / 1_000_000;
-    let mut useconds = time % 1_000_000;
-    let h = seconds / 3600;
-    let m = (seconds / 60) % 60;
-    let s = seconds % 60;
-    res[0] = h as u8 / 10 + '0' as u8;
-    res[1] = h as u8 % 10 + '0' as u8;
-    res[2] = m as u8 / 10 + '0' as u8;
-    res[3] = m as u8 % 10 + '0' as u8;
-    res[4] = s as u8 / 10 + '0' as u8;
-    res[5] = s as u8 % 10 + '0' as u8;
-    for r in res[6..].iter_mut().rev() {
-        *r = (useconds % 10) as u8 + '0' as u8;
-        useconds /= 10;
-    }
-}
-
-/// Write time given in microseconds into HHMMSSuu format,
-///
-/// panics if res is not 8 bytes long
-/// panics if duration is above 24 hours
-pub fn write_time8(time: u64, res: &mut [u8]) {
-    assert!(res.len() == 8);
-    assert!(time <= 86400000000); // 24:00:00.000000
-    let seconds = time / 1_000_000;
-    let mut useconds = time % 1_000_000;
-    let h = seconds / 3600;
-    let m = (seconds / 60) % 60;
-    let s = seconds % 60;
-    res[0] = h as u8 / 10 + '0' as u8;
-    res[1] = h as u8 % 10 + '0' as u8;
-    res[2] = m as u8 / 10 + '0' as u8;
-    res[3] = m as u8 % 10 + '0' as u8;
-    res[4] = s as u8 / 10 + '0' as u8;
-    res[5] = s as u8 % 10 + '0' as u8;
-    for r in res[6..].iter_mut().rev() {
-        *r = (useconds % 10) as u8 + '0' as u8;
-        useconds /= 10;
-    }
-}
-
-pub fn read_time8(raw: &[u8]) -> Result<u64> {
-    let mut digits: [u8; 8] = [0; 8];
-    let mut invalid = false;
-    for (digit, chr) in digits.iter_mut().zip(raw) {
-        *digit = chr.overflowing_sub('0' as u8).0;
-        invalid |= *digit > 9;
-    }
-    if invalid {
-        return Err(Error {
-            _msg: "Invalid time8",
-            _payload: raw,
-        });
-    }
-    let [h1, h2, m1, m2, s1, s2, u1, u2] = digits;
-    let h = h1 * 10 + h2;
-    let m = m1 * 10 + m2;
-    let s = s1 * 10 + s2;
-    let u = u1 as u64 * 10 + u2 as u64;
-    Ok(((h as u64 * 60 + m as u64) * 60 + s as u64) * 1_000_000 + u)
-}
-
-#[test]
-fn read_write_time8() {
-    let mut output = [0u8; 8];
-    let expected = b"12345612";
-    let t = read_time8(expected).unwrap();
-    write_time8(t, &mut output);
-    assert_eq!(expected, &output);
-}
-
-#[test]
-fn read_write_time12() {
-    let mut output = [0u8; 12];
-    let expected = b"123456123456";
-    let t = read_time12(expected).unwrap();
-    write_time12(t, &mut output);
-    assert_eq!(expected, &output);
-}
-
-/// Parse ASCII represented timestamp HHMMSSuuuuuu
-///
-/// Panics if raw is not 12 bytes long
-/// Returns an unspecified value and sets invalid to true if
-/// values re not ASCII digits.
-/// Timestamps composed of digits with invalid values for seconds (99) are accepted.
-#[cfg(target_feature = "sse2")]
-pub fn read_time12(raw: &[u8]) -> Result<u64> {
-    read_time12_vec(raw)
-}
-
-/// Parse ASCII represented timestamp HHMMSSuuuuuu
-///
-/// Panics if raw is not 12 characters long
-/// Returns an unspecified value and sets invalid to true if
-/// values re not ASCII digits.
-/// Timestamps composed of digits with invalid values for seconds (99) are accepted.
-#[cfg(not(target_feature = "sse2"))]
-pub fn read_time12(raw: &[u8]) -> Result<u64> {
-    read_time12_native(raw)
-}
-
-pub fn read_time12_native(raw: &[u8]) -> Result<u64> {
-    let mut digits: [u8; 12] = [0; 12];
-    let mut invalid = false;
-    for (digit, chr) in digits.iter_mut().zip(raw) {
-        *digit = chr.overflowing_sub('0' as u8).0;
-        invalid |= *digit > 9;
-    }
-    if invalid {
-        return Err(Error {
-            _msg: "Invalid time12",
-            _payload: raw,
-        });
-    }
-    let [h1, h2, m1, m2, s1, s2, u1, u2, u3, u4, u5, u6] = digits;
-    let h = h1 * 10 + h2;
-    let m = m1 * 10 + m2;
-    let s = s1 * 10 + s2;
-    let u = (((((u1 as u64 * 10 + u2 as u64) * 10 + u3 as u64) * 10 + u4 as u64) * 10 + u5 as u64)
-        * 10)
-        + u6 as u64;
-    Ok(((h as u64 * 60 + m as u64) * 60 + s as u64) * 1_000_000 + u)
-}
-
-#[cfg(target_feature = "sse2")]
-pub fn read_time12_vec(raw: &[u8]) -> Result<u64> {
-    let mut invalid = false;
-    let mut digits: [u8; 16] = [0; 16];
-    assert!(raw.len() == 12);
-    for (digit, &chr) in digits.iter_mut().zip(raw) {
-        *digit = chr;
-    }
-
-    let r = unsafe { read_time12v(digits, &mut invalid) };
-    if invalid {
-        return Err(Error {
-            _msg: "Invalid time12",
-            _payload: raw,
-        });
-    } else {
-        Ok(r)
-    }
-}
-
-#[cfg(target_feature = "sse2")]
-#[test]
-fn vectorized_time_parser_works() {
-    let raw = b"123446781234";
-    let t1 = read_time12(raw);
-    let t2 = read_time12_vec(raw);
-    assert_eq!(t1.unwrap(), t2.unwrap());
-}
-
-#[cfg(target_feature = "sse2")]
-unsafe fn read_time12v(raw: [u8; 16], invalid: &mut bool) -> u64 {
-    use core::arch::x86_64::*;
-    use std::intrinsics::transmute;
-
-    let digits_0 = _mm_set1_epi8('0' as i8);
-
-    // we start from 12 char representation of the timestamp "123456781234"
-    let raw = transmute::<[u8; 16], __m128i>(raw);
-
-    // subtract chr '0' and it get's converted to digits [1,2,3,4,5,6,7,8,1,2,3,4]
-    let step2 = _mm_sub_epi8(raw, digits_0);
-
-    {
-        let digits_9 = _mm_set1_epi8(9);
-        // compare every digit with 9, first 12 should be smaller than 9
-        // there's no signed compare until avx512 so
-        //
-        // instead of `(a >= b)` we use `maxu(a, b) == a`
-        let good = _mm_cmpeq_epi8(_mm_max_epu8(step2, digits_9), digits_9);
-        let mask = _mm_movemask_epi8(good);
-        *invalid |= mask != 4095;
-    }
-
-    // we need to do \x y -> x * 10 + y on each pair of numbers
-    let mask1 = _mm_set1_epi16(0x01_0a);
-
-    // and the result is [12, 34, 56, 78, 12, 34, xx, xx] represented as words (16bit)
-    let step3 = _mm_maddubs_epi16(step2, mask1);
-
-    // 1 minute = 60 seconds, 1 second = 100 1/100 seconds plus some smaller bits
-    // from the end, groups are - hours, minutes, seconds, 1/100, 1/10000, 1/1000000 of a second
-    let mask2 = _mm_set_epi8(0, 0, 0, 0, 0, 1, 0, 100, 0, 1, 0, 100, 0, 1, 0, 60);
-
-    // so we'll get [754, 5678, 1234, 0] stored as dwords (32 bit)
-    // those are minutes, 1/100 of a second and 1/10000 of a second
-    let step4 = _mm_madd_epi16(step3, mask2);
-
-    // there's no add-multiply instruction on 32 bit words so we pack it down to 16 again
-    let zero = _mm_setzero_ps();
-    let step5 = _mm_packus_epi32(step4, transmute::<__m128, __m128i>(zero));
-
-    let mask3 = _mm_set_epi16(0, 0, 0, 0, 0, 1, 1, 6000);
-
-    let step6 = _mm_madd_epi16(step5, mask3);
-    let res = _mm_cvtsi128_si64(step6) as u64;
-
-    // Add one more multiplication to convert result to microseconds
-    return (res >> 32) + (res & 0xFFFFFFFF) * 10000;
-}
-
+#[inline(always)]
 pub fn fold_digits<T>(digits: &[u8]) -> Result<T>
 where
     T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8>,
 {
-    let mut acc = 0.into();
-    for c in digits.iter() {
-        let d = c.overflowing_sub('0' as u8).0;
-        if d > 9 {
+    let mut acc: T = 0.into();
+    for d in digits.iter() {
+        let d = d.overflowing_sub(b'0').0;
+        if d >= 10 {
             return Err(Error {
                 _msg: "invalid digits",
                 _payload: digits,
@@ -231,6 +20,11 @@ where
     Ok(acc)
 }
 
+pub fn fold_u32(digits: &[u8; 12]) -> Result<u32> {
+    fold_digits(digits)
+}
+
+#[inline(always)]
 pub fn unfold_digits<T>(val: T, res: &mut [u8])
 where
     T: std::ops::Rem<Output = T>
@@ -251,17 +45,10 @@ pub fn fold_signed<T>(digits: &[u8]) -> Result<T>
 where
     T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8> + std::ops::Neg<Output = T>,
 {
-    let mut invalid_digits = false;
-
-    let r = digits[1..].iter().fold(0.into(), |acc, d| {
-        let d = d.overflowing_sub('0' as u8).0;
-        invalid_digits |= d > 9;
-        acc * 10.into() + d.into()
-    });
+    let r = fold_digits(&digits[1..])?;
     match digits[0] as char {
-        ' ' if !invalid_digits => Ok(r),
-        '+' if !invalid_digits => Ok(r),
-        '-' if !invalid_digits => Ok(-r),
+        ' ' | '+' => Ok(r),
+        '-' => Ok(-r),
         _ => Err(Error {
             _msg: "invalid digits",
             _payload: digits,
@@ -337,10 +124,10 @@ pub struct ISIN(pub u64);
 pub fn fold_isin(mut raw: [u8; 12]) -> Option<ISIN> {
     let mut res = 0;
     for c in raw.iter_mut() {
-        if (b'0'..=b'9').contains(&c) {
-            *c = *c - b'0';
-        } else if (b'A'..=b'Z').contains(&c) {
-            *c = *c - b'A' + 10;
+        if (b'0'..=b'9').contains(c) {
+            *c -= b'0';
+        } else if (b'A'..=b'Z').contains(c) {
+            *c -= b'A' - 10;
         } else {
             return None;
         }
@@ -418,7 +205,7 @@ impl<'a> Iterator for Digits<'a> {
                     Some(d / 10)
                 }
             }
-            _ => return None,
+            _ => None,
         }
     }
 }
