@@ -216,7 +216,7 @@ impl<T: Parsergen> std::fmt::Debug for Sliced<'_, T> {
     }
 }
 
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, PartialEq, Copy, Clone, Debug, Default)]
 pub struct Filler<const W: usize>;
 impl<const W: usize> Parsergen for Filler<W> {
     const WIDTH: usize = W;
