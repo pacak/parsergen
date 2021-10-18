@@ -275,21 +275,29 @@ where
 
 pub struct Sliced<'a, T>(&'a [u8], PhantomData<T>);
 
-impl<'a, T, const W: usize> From<&'a [u8; W]> for Sliced<'a, T> {
-    fn from(val: &'a [u8; W]) -> Self {
-        Sliced(val, PhantomData::default())
-    }
-}
-
 impl<'a, T> From<&'a [u8]> for Sliced<'a, T> {
     fn from(val: &'a [u8]) -> Self {
-        Sliced(val, PhantomData::default())
+        Self(val, PhantomData::default())
     }
 }
 
 impl<T: Parsergen> std::fmt::Debug for Sliced<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         <T as Parsergen>::slice(self.0, f)
+    }
+}
+
+pub struct SlicedOwned<T>(Vec<u8>, PhantomData<T>);
+
+impl<T> From<&[u8]> for SlicedOwned<T> {
+    fn from(val: &[u8]) -> Self {
+        Self(Vec::from(val), PhantomData::default())
+    }
+}
+
+impl<T: Parsergen> std::fmt::Debug for SlicedOwned<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <T as Parsergen>::slice(&self.0, f)
     }
 }
 
