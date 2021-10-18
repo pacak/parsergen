@@ -47,10 +47,10 @@ where
 {
     let r = fold_digits(&digits[1..])?;
     match digits[0] as char {
-        ' ' | '+' => Ok(r),
+        '0' | ' ' | '+' => Ok(r),
         '-' => Ok(-r),
         _ => Err(Error {
-            _msg: "invalid digits",
+            _msg: "invalid digits (sign)",
             _payload: digits,
         }),
     }
