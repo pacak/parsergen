@@ -110,6 +110,16 @@ impl SignedUnfold for isize {
     }
 }
 
+impl SignedUnfold for i128 {
+    fn unfold(self, raw: &mut [u8]) {
+        unfold_digits::<usize>(self.abs().try_into().unwrap(), raw);
+    }
+
+    fn positive(&self) -> bool {
+        *self > 0
+    }
+}
+
 pub fn unfold_signed<T>(val: T, res: &mut [u8])
 where
     T: SignedUnfold,
@@ -121,38 +131,30 @@ where
 #[derive(Copy, Clone, Debug)]
 pub struct ISIN(pub u64);
 /// folds a valid ISIN into u64, see [unfold_isin]
-pub fn fold_isin(mut raw: [u8; 12]) -> Option<ISIN> {
-    let mut res = 0;
-    for c in raw.iter_mut() {
-        if (b'0'..=b'9').contains(c) {
-            *c -= b'0';
-        } else if (b'A'..=b'Z').contains(c) {
-            *c -= b'A' - 10;
-        } else {
-            return None;
+pub fn fold_isin(raw: [u8; 12]) -> Option<ISIN> {
+    let mut res: u64 = 0;
+    let mut mixer = luhn3::Mixer::default();
+    for c in raw.iter() {
+        match c {
+            b'0'..=b'9' => {
+                let c = c - b'0';
+                mixer.push(c);
+                res = res * 36 + c as u64;
+            }
+            b'A'..=b'Z' => {
+                let c = c - b'A' + 10;
+                mixer.push(c / 10);
+                mixer.push(c % 10);
+                res = res * 36 + c as u64;
+            }
+            _ => return None,
         }
     }
-    let digits = raw;
-    struct Dig {
-        sum: u8,
-        cnt5: u8,
+    if mixer.valid() {
+        Some(ISIN(res))
+    } else {
+        None
     }
-    let mut sum = (Dig { sum: 0, cnt5: 0 }, Dig { sum: 0, cnt5: 0 });
-    for d in Digits::new(&digits) {
-        if d >= 5 {
-            sum.0.cnt5 += 1;
-        }
-        sum.0.sum += d;
-        sum = (sum.1, sum.0)
-    }
-    if (sum.0.sum * 2 - sum.0.cnt5 * 9 + sum.1.sum) % 10 != 0 {
-        return None;
-    }
-
-    for c in digits.iter() {
-        res = res * 36 + *c as u64;
-    }
-    Some(ISIN(res))
 }
 
 /// unfolds a valid ISIN into an array of ASCII bytes, see [fold_isin]
@@ -177,42 +179,4 @@ fn test_fold_unfold() {
 
     let folded = fold_isin(*msg).unwrap();
     assert_eq!(&unfold_isin(folded), msg);
-}
-
-struct Digits<'a>(Option<u8>, &'a [u8]);
-
-impl<'a> Digits<'a> {
-    pub fn new(vals: &'a [u8]) -> Self {
-        Digits(None, vals)
-    }
-}
-impl<'a> Iterator for Digits<'a> {
-    type Item = u8;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(n) = self.0 {
-            self.0 = None;
-            return Some(n);
-        }
-        match self.1 {
-            [d, rest @ ..] => {
-                if *d < 10 {
-                    self.1 = rest;
-                    Some(*d)
-                } else {
-                    self.0 = Some(d % 10);
-                    self.1 = rest;
-                    Some(d / 10)
-                }
-            }
-            _ => None,
-        }
-    }
-}
-
-#[test]
-fn test_digits() {
-    let digits = [3, 10, 12, 15];
-    let r = Digits::new(&digits).collect::<Vec<_>>();
-    assert_eq!(&r, &[3, 1, 0, 1, 2, 1, 5]);
 }

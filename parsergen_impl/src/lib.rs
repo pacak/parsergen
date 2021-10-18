@@ -174,11 +174,13 @@ derive_fixed!(u8, fold_digits, unfold_digits);
 derive_fixed!(u16, fold_digits, unfold_digits);
 derive_fixed!(u32, fold_digits, unfold_digits);
 derive_fixed!(u64, fold_digits, unfold_digits);
+derive_fixed!(u128, fold_digits, unfold_digits);
 derive_fixed!(usize, fold_digits, unfold_digits);
 
 derive_fixed!(i16, fold_signed, unfold_signed);
 derive_fixed!(i32, fold_signed, unfold_signed);
 derive_fixed!(i64, fold_signed, unfold_signed);
+derive_fixed!(i128, fold_signed, unfold_signed);
 derive_fixed!(isize, fold_signed, unfold_signed);
 
 #[derive(Debug)]
