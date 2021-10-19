@@ -4,6 +4,9 @@ pub mod primitives;
 use primitives::*;
 pub mod time;
 
+pub mod numbers;
+pub use numbers::*;
+
 pub type Result<'a, T, E = Error<'a>> = core::result::Result<T, E>;
 #[derive(Debug)]
 pub struct Error<'a> {
@@ -23,19 +26,6 @@ impl std::fmt::Display for Error<'_> {
 }
 
 impl<'a> std::error::Error for Error<'a> {}
-/////////////////////////////////////////////////////////////////////////////////////////////////
-pub trait Decode {
-    const WIDTH: usize;
-
-    fn decode(raw: &[u8]) -> Result<Self>
-    where
-        Self: Sized;
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-pub trait Encode {
-    fn encode(&self, raw: &mut [u8]);
-}
 
 pub trait Parsergen {
     const WIDTH: usize;
@@ -80,148 +70,23 @@ impl<'a, const N: usize> PrettyArrBytes<'a, N> {
     }
 }
 
+#[inline(always)]
+pub fn width_check<'a, const WIDTH: usize>(
+    _payload: &'a [u8],
+    _msg: &'static str,
+) -> Result<'a, ()> {
+    if _payload.len() == WIDTH {
+        Ok(())
+    } else {
+        Err(Error { _msg, _payload })
+    }
+}
+
 impl<const N: usize> std::fmt::Debug for PrettyArrBytes<'_, N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list()
             .entries(self.0.chunks(self.0.len() / N).map(PrettyBytes))
             .finish()
-    }
-}
-//
-
-#[derive(Copy, Clone, Default)]
-pub struct FixedT<T, const WIDTH: usize>(pub T);
-
-impl<T, const WIDTH: usize> FixedT<T, WIDTH> {
-    pub fn new(val: T) -> Self {
-        Self(val)
-    }
-}
-
-macro_rules! derive_fixed {
-    ($ty:ty, $fold:ident, $unfold:ident) => {
-        impl<const WIDTH: usize> Decode for FixedT<$ty, WIDTH> {
-            const WIDTH: usize = WIDTH;
-            #[inline]
-            fn decode(raw: &[u8]) -> Result<Self> {
-                if raw.len() == WIDTH {
-                    Ok(FixedT($fold(raw)?))
-                } else {
-                    Err(Error {
-                        _msg: "invalid width",
-                        _payload: raw,
-                    })
-                }
-            }
-        }
-
-        impl<const WIDTH: usize> Parsergen for FixedT<$ty, WIDTH> {
-            const WIDTH: usize = WIDTH;
-
-            #[inline]
-            fn des(raw: &[u8]) -> Result<Self> {
-                if raw.len() == WIDTH {
-                    Ok(FixedT($fold(raw)?))
-                } else {
-                    Err(Error {
-                        _msg: "invalid width",
-                        _payload: raw,
-                    })
-                }
-            }
-
-            fn ser(&self, res: &mut [u8]) {
-                $unfold(self.0, res);
-            }
-        }
-    };
-}
-
-impl<const WIDTH: usize> Parsergen for FixedT<i8, WIDTH> {
-    const WIDTH: usize = WIDTH;
-    #[inline]
-    fn des(raw: &[u8]) -> Result<Self> {
-        let err = Error {
-            _msg: "invalid width",
-            _payload: raw,
-        };
-
-        use std::convert::TryFrom;
-        if raw.len() == WIDTH {
-            let x16: i16 = fold_signed(raw)?;
-            match i8::try_from(x16) {
-                Ok(i) => Ok(FixedT(i)),
-                _ => Err(err),
-            }
-        } else {
-            Err(Error {
-                _msg: "invalid width",
-                _payload: raw,
-            })
-        }
-    }
-
-    fn ser(&self, res: &mut [u8]) {
-        unfold_signed(self.0, res);
-    }
-
-    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", PrettyBytes(raw))
-    }
-}
-
-derive_fixed!(u8, fold_digits, unfold_digits);
-derive_fixed!(u16, fold_digits, unfold_digits);
-derive_fixed!(u32, fold_digits, unfold_digits);
-derive_fixed!(u64, fold_digits, unfold_digits);
-derive_fixed!(u128, fold_digits, unfold_digits);
-derive_fixed!(usize, fold_digits, unfold_digits);
-
-derive_fixed!(i16, fold_signed, unfold_signed);
-derive_fixed!(i32, fold_signed, unfold_signed);
-derive_fixed!(i64, fold_signed, unfold_signed);
-derive_fixed!(i128, fold_signed, unfold_signed);
-derive_fixed!(isize, fold_signed, unfold_signed);
-
-#[derive(Debug)]
-pub struct FixedArrT<T, const WIDTH: usize, const CNT: usize>(pub [T; CNT]);
-
-impl<T, const WIDTH: usize, const CNT: usize> FixedArrT<T, WIDTH, CNT> {
-    pub fn new(val: [T; CNT]) -> Self {
-        Self(val)
-    }
-}
-
-impl<T, const WIDTH: usize, const CNT: usize> Parsergen for FixedArrT<T, WIDTH, CNT>
-where
-    T: Default + Copy + std::fmt::Debug,
-    FixedT<T, WIDTH>: Parsergen,
-{
-    const WIDTH: usize = WIDTH * CNT;
-
-    #[inline]
-    fn des(raw: &[u8]) -> Result<Self> {
-        let mut res = [T::default(); CNT];
-        for (ix, raw) in raw.chunks(WIDTH).enumerate() {
-            res[ix] = FixedT::des(raw)?.0;
-        }
-        Ok(Self(res))
-    }
-
-    fn ser(&self, raw: &mut [u8]) {
-        println!(
-            "Will try to write {:?} to {:?}",
-            self,
-            raw.chunks_mut(WIDTH)
-        );
-        for (val, chunk) in self.0.iter().zip(raw.chunks_mut(WIDTH)) {
-            println!("writing {:?} to {:?}", val, chunk);
-            <FixedT<T, WIDTH> as Parsergen>::ser(&FixedT::new(*val), chunk);
-        }
-    }
-
-    fn slice(_raw: &[u8], _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
     }
 }
 
@@ -359,6 +224,7 @@ where
 {
     const WIDTH: usize = T::WIDTH * CNT;
 
+    #[inline(always)]
     fn des(raw: &[u8]) -> Result<Self> {
         let mut res = [T::default(); CNT];
         for (ix, raw) in raw.chunks(T::WIDTH).enumerate() {

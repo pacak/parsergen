@@ -188,19 +188,16 @@ pub fn read_time12_native(raw: &[u8]) -> Result<u64> {
 
 #[cfg(target_feature = "sse2")]
 pub fn read_time12_vec(raw: &[u8]) -> Result<u64> {
-    let mut invalid = false;
     let mut digits = [0u8; 16];
     assert!(raw.len() == 12);
     digits[0..12].copy_from_slice(raw);
 
-    let r = unsafe { read_time12v(digits, &mut invalid) };
-    if invalid {
-        Err(Error {
+    match read_time12v(digits) {
+        Some(x) => Ok(x),
+        None => Err(Error {
             _msg: "Invalid time12",
             _payload: raw,
-        })
-    } else {
-        Ok(r)
+        }),
     }
 }
 
@@ -214,52 +211,49 @@ fn vectorized_time_parser_works() {
 }
 
 #[cfg(target_feature = "sse2")]
-unsafe fn read_time12v(raw: [u8; 16], invalid: &mut bool) -> u64 {
-    use core::arch::x86_64::*;
-    use std::intrinsics::transmute;
+fn read_time12v(raw: [u8; 16]) -> Option<u64> {
+    unsafe {
+        use core::arch::x86_64::*;
+        use std::intrinsics::transmute;
 
-    let digits_0 = _mm_set1_epi8('0' as i8);
+        use crate::primitives::decimal_mask;
 
-    // we start from 12 char representation of the timestamp "123456781234"
-    let raw = transmute::<[u8; 16], __m128i>(raw);
+        if decimal_mask(raw) != 4095 {
+            return None;
+        }
 
-    // subtract chr '0' and it get's converted to digits [1,2,3,4,5,6,7,8,1,2,3,4]
-    let step2 = _mm_sub_epi8(raw, digits_0);
+        let digits_0 = _mm_set1_epi8('0' as i8);
 
-    {
-        let digits_9 = _mm_set1_epi8(9);
-        // compare every digit with 9, first 12 should be smaller than 9
-        // there's no signed compare until avx512 so
-        //
-        // instead of `(a >= b)` we use `maxu(a, b) == a`
-        let good = _mm_cmpeq_epi8(_mm_max_epu8(step2, digits_9), digits_9);
-        let mask = _mm_movemask_epi8(good);
-        *invalid |= mask != 4095;
+        // we start from 12 char representation of the timestamp "123456781234"
+        let raw = transmute::<[u8; 16], __m128i>(raw);
+
+        // subtract chr '0' and it get's converted to digits [1,2,3,4,5,6,7,8,1,2,3,4]
+        let step2 = _mm_sub_epi8(raw, digits_0);
+
+        // we need to do \x y -> x * 10 + y on each pair of numbers
+        let mask1 = _mm_set1_epi16(0x01_0a);
+
+        // and the result is [12, 34, 56, 78, 12, 34, xx, xx] represented as words (16bit)
+        let step3 = _mm_maddubs_epi16(step2, mask1);
+
+        // 1 minute = 60 seconds, 1 second = 100 1/100 seconds plus some smaller bits
+        // from the end, groups are - hours, minutes, seconds, 1/100, 1/10000, 1/1000000 of a second
+        let mask2 = _mm_set_epi8(0, 0, 0, 0, 0, 1, 0, 100, 0, 1, 0, 100, 0, 1, 0, 60);
+
+        // so we'll get [754, 5678, 1234, 0] stored as dwords (32 bit)
+        // those are minutes, 1/100 of a second and 1/10000 of a second
+        let step4 = _mm_madd_epi16(step3, mask2);
+
+        // there's no add-multiply instruction on 32 bit words so we pack it down to 16 again
+        let zero = _mm_setzero_ps();
+        let step5 = _mm_packus_epi32(step4, transmute::<__m128, __m128i>(zero));
+
+        let mask3 = _mm_set_epi16(0, 0, 0, 0, 0, 1, 1, 6000);
+
+        let step6 = _mm_madd_epi16(step5, mask3);
+        let res = _mm_cvtsi128_si64(step6) as u64;
+
+        // Add one more multiplication to convert result to nanoseconds
+        Some(((res >> 32) + (res & 0xFFFFFFFF) * 10000) * 1000)
     }
-
-    // we need to do \x y -> x * 10 + y on each pair of numbers
-    let mask1 = _mm_set1_epi16(0x01_0a);
-
-    // and the result is [12, 34, 56, 78, 12, 34, xx, xx] represented as words (16bit)
-    let step3 = _mm_maddubs_epi16(step2, mask1);
-
-    // 1 minute = 60 seconds, 1 second = 100 1/100 seconds plus some smaller bits
-    // from the end, groups are - hours, minutes, seconds, 1/100, 1/10000, 1/1000000 of a second
-    let mask2 = _mm_set_epi8(0, 0, 0, 0, 0, 1, 0, 100, 0, 1, 0, 100, 0, 1, 0, 60);
-
-    // so we'll get [754, 5678, 1234, 0] stored as dwords (32 bit)
-    // those are minutes, 1/100 of a second and 1/10000 of a second
-    let step4 = _mm_madd_epi16(step3, mask2);
-
-    // there's no add-multiply instruction on 32 bit words so we pack it down to 16 again
-    let zero = _mm_setzero_ps();
-    let step5 = _mm_packus_epi32(step4, transmute::<__m128, __m128i>(zero));
-
-    let mask3 = _mm_set_epi16(0, 0, 0, 0, 0, 1, 1, 6000);
-
-    let step6 = _mm_madd_epi16(step5, mask3);
-    let res = _mm_cvtsi128_si64(step6) as u64;
-
-    // Add one more multiplication to convert result to nanoseconds
-    ((res >> 32) + (res & 0xFFFFFFFF) * 10000) * 1000
 }

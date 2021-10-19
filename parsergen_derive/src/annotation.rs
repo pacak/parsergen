@@ -6,7 +6,7 @@ use syn::{parse::Parse, punctuated::Punctuated, *};
 #[derive(Debug)]
 pub enum Annotation {
     Literal(Literal),
-    Fixed(LitInt),
+    Fixed(usize),
     ViaIso(Box<Type>),
     Offset(LitInt),
 }
@@ -16,7 +16,8 @@ impl parse::Parse for Annotation {
         let tname = input.parse::<Ident>()?;
         input.parse::<Token![:]>()?;
         if tname == "decimal" {
-            Ok(Annotation::Fixed(input.parse()?))
+            let lit: LitInt = input.parse()?;
+            Ok(Annotation::Fixed(lit.base10_parse()?))
         } else if tname == "literal" {
             Ok(Annotation::Literal(input.parse::<AsciiLiteral>()?.0))
         } else if tname == "hex" {

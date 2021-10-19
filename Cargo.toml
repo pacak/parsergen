@@ -20,5 +20,9 @@ harness = false
 name = "time"
 harness = false
 
+[[bench]]
+name = "numbers"
+harness = false
+
 [workspace]
 members = ["parsergen_derive", "parsergen_impl", "parsergen_tests"]

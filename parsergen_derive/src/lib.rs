@@ -74,7 +74,7 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
     let r = quote! {
         impl ::parsergen::Parsergen for #ty {
             const WIDTH: usize = #width;
-            #[inline]
+            #[inline(always)]
             fn des<'a>(raw: &[u8]) -> ::parsergen::Result<Self> {
                 if raw.len() != Self::WIDTH {
                     return Err(::parsergen::Error{_msg: #mismatch, _payload: raw })
@@ -108,7 +108,7 @@ fn for_unit_struct(input: StructUnit) -> Result<TokenStream> {
     let r = quote! {
         impl ::parsergen::Parsergen for #ty {
             const WIDTH: usize = #width;
-            #[inline]
+            #[inline(always)]
             fn des<'a>(raw: &[u8]) -> ::parsergen::Result<Self> {
                 if &raw != & #literal {
                     return Err(::parsergen::Error {_msg: #mismatch, _payload: raw})
@@ -194,7 +194,7 @@ fn for_struct_with_fields(input: StructFields) -> Result<TokenStream> {
     let r = quote! {
         impl ::parsergen::Parsergen for #ty {
             const WIDTH: usize = #width;
-            #[inline]
+            #[inline(always)]
             fn des(raw: &[u8]) -> ::parsergen::Result<Self> {
                 if raw.len() != Self::WIDTH {
                     return Err(::parsergen::Error {_msg: #mismatch, _payload: raw})
@@ -408,7 +408,7 @@ fn sequence_fields(i: Punctuated<SField, Token![,]>) -> impl Iterator<Item = Seq
 #[derive(Debug)]
 enum FieldKind {
     Literal(Literal),
-    Fixed(LitInt),
+    Fixed(usize),
     Iso(Box<Type>),
     Inherited,
 }
@@ -498,11 +498,18 @@ impl SField {
                 quote!(::parsergen::parse_literal::<#ty>(&#lit, slice)?)
             }
             (FieldKind::Literal(_), Some(_)) => unreachable!(),
+            (FieldKind::Fixed(width), None) if *width >= 4 => {
+                quote!(<::parsergen::FixedTV::<#ty, #width>>::des(slice)?.0)
+            }
             (FieldKind::Fixed(width), None) => {
                 quote!(<::parsergen::FixedT::<#ty, #width>>::des(slice)?.0)
             }
             (FieldKind::Fixed(width), Some(TypeArray { len, elem, .. })) => {
-                quote!(<::parsergen::FixedArrT::<#elem, #width, #len>>::des(slice)?.0)
+                if *width >= 4 {
+                    quote!(<::parsergen::FixedArrTV::<#elem, #width, #len>>::des(slice)?.0)
+                } else {
+                    quote!(<::parsergen::FixedArrT::<#elem, #width, #len>>::des(slice)?.0)
+                }
             }
             (FieldKind::Iso(iso), None) => {
                 quote!(<#ty>::from(<#iso as ::parsergen::Parsergen>::des(slice)?))

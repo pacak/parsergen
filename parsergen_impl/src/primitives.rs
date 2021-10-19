@@ -1,5 +1,4 @@
 use crate::{Error, Result};
-use std::convert::TryInto;
 
 #[inline(always)]
 pub fn fold_digits<T>(digits: &[u8]) -> Result<T>
@@ -20,8 +19,69 @@ where
     Ok(acc)
 }
 
-pub fn fold_u32(digits: &[u8; 12]) -> Result<u32> {
-    fold_digits(digits)
+/*
+unsafe fn pp(s: &'static str, val: std::arch::x86_64::__m128i) {
+    let bs = std::intrinsics::transmute::<std::arch::x86_64::__m128i, [i8; 16]>(val);
+    println!("{}: {:?}", s, bs);
+}*/
+
+#[inline(always)]
+pub fn decimal_mask(raw: [u8; 16]) -> i32 {
+    unsafe {
+        use core::arch::x86_64::*;
+        use std::intrinsics::transmute;
+        // take a digit, subtract with overflow such that
+        // 0 corresponds to -128 .. 9 corresponds to -128 + 9
+        // return a mask of values less than -128 + 10
+        // those will be valid digits
+        let ascii_digits = transmute::<[u8; 16], __m128i>(raw);
+        let offset = _mm_set1_epi8((b'0' + 128) as i8);
+        let shifted_digits = _mm_sub_epi8(ascii_digits, offset);
+        let high_bound = _mm_set1_epi8(-128 + 10);
+        let mask = _mm_cmpgt_epi8(high_bound, shifted_digits);
+        _mm_movemask_epi8(mask)
+    }
+}
+
+#[test]
+fn test_decimal_mask() {
+    let mask = decimal_mask(*b"/0123456789:;<=>");
+    assert_eq!(0b00000_11111_11111_0, mask, "{:b}", mask);
+}
+
+#[inline(always)]
+#[cfg(target_feature = "sse2")]
+pub fn fold_digits_vec<T>(digits: &[u8]) -> Result<T>
+where
+    T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8>,
+{
+    let mut acc: T = 0.into();
+    for chunk in digits.chunks(16) {
+        let mut mask = [0u8; 16];
+        let width = chunk.len();
+        mask[..width].copy_from_slice(chunk);
+        let masked = decimal_mask(mask);
+        if masked != (1 << width) - 1 {
+            return Err(Error {
+                _msg: "invalid digits",
+                _payload: digits,
+            });
+        }
+    }
+    for d in digits.iter() {
+        let d = d.overflowing_sub(b'0').0;
+        acc = acc * 10.into() + d.into();
+    }
+    Ok(acc)
+}
+
+#[cfg(not(target_feature = "sse2"))]
+#[inline(always)]
+pub fn fold_digits_vec<T>(digits: &[u8]) -> Result<T>
+where
+    T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8>,
+{
+    fold_digits::<T>(digits)
 }
 
 #[inline(always)]
@@ -56,76 +116,19 @@ where
     }
 }
 
-pub trait SignedUnfold {
-    fn positive(&self) -> bool;
-    fn unfold(self, raw: &mut [u8]);
-}
-
-impl SignedUnfold for i8 {
-    fn unfold(self, raw: &mut [u8]) {
-        unfold_digits::<u8>(self.abs().try_into().unwrap(), raw);
-    }
-    fn positive(&self) -> bool {
-        *self > 0
-    }
-}
-
-impl SignedUnfold for i16 {
-    fn unfold(self, raw: &mut [u8]) {
-        unfold_digits::<u16>(self.abs().try_into().unwrap(), raw);
-    }
-
-    fn positive(&self) -> bool {
-        *self > 0
-    }
-}
-
-impl SignedUnfold for i32 {
-    fn unfold(self, raw: &mut [u8]) {
-        unfold_digits::<u32>(self.abs().try_into().unwrap(), raw);
-    }
-
-    fn positive(&self) -> bool {
-        *self > 0
-    }
-}
-
-impl SignedUnfold for i64 {
-    fn unfold(self, raw: &mut [u8]) {
-        unfold_digits::<u64>(self.abs().try_into().unwrap(), raw);
-    }
-
-    fn positive(&self) -> bool {
-        *self > 0
-    }
-}
-
-impl SignedUnfold for isize {
-    fn unfold(self, raw: &mut [u8]) {
-        unfold_digits::<usize>(self.abs().try_into().unwrap(), raw);
-    }
-
-    fn positive(&self) -> bool {
-        *self > 0
-    }
-}
-
-impl SignedUnfold for i128 {
-    fn unfold(self, raw: &mut [u8]) {
-        unfold_digits::<usize>(self.abs().try_into().unwrap(), raw);
-    }
-
-    fn positive(&self) -> bool {
-        *self > 0
-    }
-}
-
-pub fn unfold_signed<T>(val: T, res: &mut [u8])
+pub fn fold_signed_vec<T, const WIDTH: usize>(digits: &[u8]) -> Result<T>
 where
-    T: SignedUnfold,
+    T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8> + std::ops::Neg<Output = T>,
 {
-    res[0] = if val.positive() { b' ' } else { b'-' };
-    val.unfold(&mut res[1..]);
+    let r = fold_digits_vec::<T>(&digits[1..])?;
+    match digits[0] as char {
+        '0' | ' ' | '+' => Ok(r),
+        '-' => Ok(-r),
+        _ => Err(Error {
+            _msg: "invalid digits (sign)",
+            _payload: digits,
+        }),
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

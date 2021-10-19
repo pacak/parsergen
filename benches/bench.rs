@@ -31,15 +31,16 @@ struct PQPairFut {
 }
 
 #[derive(Parsergen, Copy, Clone, Default, Debug)]
+struct FutDir {
+    #[parsergen(decimal: 6)]
+    total: u32,
+    best5: [PQPairFut; 5],
+}
+
+#[derive(Parsergen, Copy, Clone, Default, Debug)]
 struct FutPrices {
-    #[parsergen(decimal: 6)]
-    total_bids: u32,
-
-    bids: [PQPairFut; 5],
-
-    #[parsergen(decimal: 6)]
-    total_asks: u32,
-    asks: [PQPairFut; 5],
+    bids: FutDir,
+    asks: FutDir,
 
     #[parsergen(decimal: 5)]
     valid_bids: u32,
@@ -52,8 +53,53 @@ struct FutPrices {
     valid_asks_lvl: [u32; 5],
 }
 
-#[derive(Parsergen, Copy, Clone, Debug)]
-struct Isin([u8; 12]);
+#[derive(Copy, Clone, Debug)]
+struct Isin(u64);
+
+impl Parsergen for Isin {
+    const WIDTH: usize = 12;
+
+    fn des(raw: &[u8]) -> Result<Self> {
+        use std::convert::TryInto;
+        Ok(Isin(fold_isin(raw.try_into().unwrap()).unwrap().0))
+    }
+
+    fn ser(&self, raw: &mut [u8]) {
+        let buf = unfold_isin(ISIN(self.0));
+        raw.copy_from_slice(&buf);
+    }
+}
+
+#[derive(Debug, PartialEq, Copy, Clone, Eq, Parsergen)]
+pub enum BoardId {
+    #[parsergen(literal: "G1")]
+    RegularSession,
+    /// Pre-Off Hours Session Closing Price
+    #[parsergen(literal: "G2")]
+    G2,
+    /// Post-Off Hours Session Closing Price
+    #[parsergen(literal: "G3")]
+    G3,
+    /// Post-Off Hours Session Single Price
+    #[parsergen(literal: "G4")]
+    G4,
+    /// Pre-Off Hours Session Closing Price
+    #[parsergen(literal: "G5")]
+    G5,
+    /// Regular Buy-In
+    #[parsergen(literal: "G6")]
+    G7,
+    /// Same day Buy-In
+    #[parsergen(literal: "G8")]
+    G8,
+    /// Pre-Off Hours Session
+    ///
+    /// Pre-Market Negotiated Trade
+    #[parsergen(literal: "U2")]
+    U2,
+    #[parsergen(literal: "N1")]
+    N1,
+}
 
 #[derive(Parsergen, Copy, Clone, Debug)]
 enum SessionId {
@@ -132,7 +178,7 @@ struct FutB6 {
     isin: Isin,
     #[parsergen(decimal: 8)]
     seq_no: u32,
-    board_id: Filler<2>,
+    board_id: BoardId,
     session_id: SessionId,
     prices: FutPrices,
     #[parsergen(via: Time12)]
@@ -141,11 +187,17 @@ struct FutB6 {
     estimated_price: i32,
 }
 
-fn b_unsigned_decimal(c: &mut Criterion) {
-    let input = b"123456781234";
-    c.bench_function("unsigned decimal", |b| {
+fn b_pqpair_arr(c: &mut Criterion) {
+    let input = b" 12345123456 12345123456 12345123456 12345123456 12345123456";
+    c.bench_function("PQPairFut pvec x 1", |b| {
         b.iter(|| {
-            FixedT::<usize, 12>::des(black_box(input)).unwrap();
+            PQPairFut::des(black_box(&input[..12])).unwrap();
+        })
+    });
+
+    c.bench_function("PQPairFut pvec x 5 ", |b| {
+        b.iter(|| {
+            <[PQPairFut; 5]>::des(black_box(input)).unwrap();
         })
     });
 }
@@ -177,38 +229,51 @@ fn b_unfold_isin(c: &mut Criterion) {
     });
 }
 
-// goat to beat: 138ns
-fn b_fut(c: &mut Criterion) {
-    let input = b"B6014KR4101Q5000300000000G110000000 00000000182 00000000000 00000000000 00000000000 00000000000119255 00000305343 00000119275 46592000000 15184000000 0000000000000000179200000000000000000000046590000000000000000125632000000 00182";
-
-    c.bench_function("FutB6", |b| {
+fn b_fut_pairs(c: &mut Criterion) {
+    let input = b" 12345123456";
+    c.bench_function("PQPairFut", |b| {
         b.iter(|| {
-            //          for _ in 0..1000000 {
-            FutB6::des(black_box(input)).unwrap();
-            //          }
+            PQPairFut::des(black_box(input)).unwrap();
         })
     });
 }
-/*
 
-criterion_group! {
-    name = writes;
-    config = Criterion::default();
-    targets =
-        b_write_time_6,
-        b_write_time_8,
-        b_write_time_12v,
-        b_write_time_12n,
-        b_write_time_12,
+fn b_fut_dir(c: &mut Criterion) {
+    let input = b"000000 00000000182 00000000000 00000000000 00000000000 00000000000";
+    c.bench_function("Fut Dir", |b| {
+        b.iter(|| {
+            FutDir::des(black_box(input)).unwrap();
+        })
+    });
 }
-*/
+
+fn b_fut_prices(c: &mut Criterion) {
+    let input = b"000000 00000000182 00000000000 00000000000 00000000000 00000000000119255 00000305343 00000119275 46592000000 15184000000 0000000000000000179200000000000000000000046590000000000000000";
+    c.bench_function("Fut Prices", |b| {
+        b.iter(|| {
+            FutPrices::des(black_box(input)).unwrap();
+        })
+    });
+}
+
+fn b_fut(c: &mut Criterion) {
+    let input = b"B6014KR4101Q5000300000000G110000000 00000000182 00000000000 00000000000 00000000000 00000000000119255 00000305343 00000119275 46592000000 15184000000 0000000000000000179200000000000000000000046590000000000000000125632000000 00182";
+    c.bench_function("FutB6", |b| {
+        b.iter(|| {
+            FutB6::des(black_box(input)).unwrap();
+        })
+    });
+}
 
 criterion_group!(
     primitive,
-    b_unsigned_decimal,
     b_fold_isin,
     b_unfold_isin,
     b_cents,
+    b_fut_pairs,
+    b_fut_dir,
+    b_fut_prices,
     b_fut,
+    b_pqpair_arr,
 );
 criterion_main!(primitive);
