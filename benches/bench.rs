@@ -60,7 +60,6 @@ impl Parsergen for Isin {
     const WIDTH: usize = 12;
 
     fn des(raw: &[u8]) -> Result<Self> {
-        use std::convert::TryInto;
         Ok(Isin(fold_isin(raw.try_into().unwrap()).unwrap().0))
     }
 
