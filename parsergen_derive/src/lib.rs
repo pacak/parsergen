@@ -20,7 +20,7 @@ fn derive_decode_impl(input: DecodeInput) -> Result<TokenStream> {
         DecodeInput::Struct(StructInput::Unit(x)) => for_unit_struct(x),
         DecodeInput::Enum(x) => for_enum(x),
     }?;
-    //    println!("{}", r);
+    println!("{}", r);
     Ok(r)
 }
 
@@ -72,10 +72,14 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
     });
 
     let r = quote! {
-        impl ::parsergen::Parsergen for #ty {
+
+        impl ::parsergen::HasWidth for #ty {
             const WIDTH: usize = #width;
+        }
+
+        impl ::parsergen::Parsergen<{#width}> for #ty {
             #[inline(always)]
-            fn des<'a>(raw: &[u8]) -> ::parsergen::Result<Self> {
+            fn des<'a>(raw: &[u8; #width]) -> ::parsergen::Result<Self> {
                 if raw.len() != Self::WIDTH {
                     return Err(::parsergen::Error{_msg: #mismatch, _payload: raw })
                 }
@@ -84,7 +88,7 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
             }
 
             #[inline]
-            fn ser(&self, raw: &mut [u8]) {
+            fn ser(&self, raw: &mut [u8; #width]) {
                 match self {
                     #(#stores),*
                 }
@@ -106,18 +110,22 @@ fn for_unit_struct(input: StructUnit) -> Result<TokenStream> {
     let mismatch = "";
     let ty_str = ty.to_string();
     let r = quote! {
-        impl ::parsergen::Parsergen for #ty {
+
+        impl ::parsergen::HasWidth for #ty {
             const WIDTH: usize = #width;
+        }
+
+        impl ::parsergen::Parsergen<{#width}> for #ty {
             #[inline(always)]
-            fn des<'a>(raw: &[u8]) -> ::parsergen::Result<Self> {
-                if &raw != & #literal {
+            fn des<'a>(raw: &[u8; #width]) -> ::parsergen::Result<Self> {
+                if raw != & #literal {
                     return Err(::parsergen::Error {_msg: #mismatch, _payload: raw})
                 }
                 Ok(Self)
             }
 
             #[inline]
-            fn ser(&self, raw: &mut [u8]) {
+            fn ser(&self, raw: &mut [u8; #width]) {
                 raw.copy_from_slice(&#literal);
             }
 
@@ -144,7 +152,7 @@ fn for_struct_with_fields(input: StructFields) -> Result<TokenStream> {
              ..
          }| {
             quote! {
-                let slice = &raw[#f .. #t];
+                let slice = ::arrayref::array_ref!(raw, #f, #t - #f);
                 let #name = #parser;
             }
         },
@@ -161,7 +169,7 @@ fn for_struct_with_fields(input: StructFields) -> Result<TokenStream> {
             quote! {
                 #offset_assert;
                 let var = #name;
-                let slice = &mut raw[#f .. #t ];
+                let slice = ::arrayref::array_mut_ref!(raw, #f, #t - #f);
                 #encoder;
             }
         },
@@ -190,38 +198,37 @@ fn for_struct_with_fields(input: StructFields) -> Result<TokenStream> {
     };
 
     let self_constr = input.self_constr();
-    let mismatch = format!("unexpected payload length for {}", ty);
     let r = quote! {
-        impl ::parsergen::Parsergen for #ty {
-            const WIDTH: usize = #width;
-            #[inline(always)]
-            fn des(raw: &[u8]) -> ::parsergen::Result<Self> {
-                if raw.len() != Self::WIDTH {
-                    return Err(::parsergen::Error {_msg: #mismatch, _payload: raw})
+
+            impl ::parsergen::HasWidth for #ty {
+                const WIDTH: usize = #width;
+            }
+
+            impl ::parsergen::Parsergen<{#width}> for #ty {
+                fn des(raw: &[u8; #width]) -> ::parsergen::Result<Self> {
+                    const O_0: usize = 0;
+                    #(#offsets)*
+                    #(#parse_fields)*
+                    Ok(Self #self_constr)
+
                 }
-                const O_0: usize = 0;
-                #(#offsets)*
-                #(#parse_fields)*
-                Ok(Self #self_constr)
 
+                fn ser(&self, raw: &mut [u8; #width]) {
+                    const O_0: usize = 0;
+                    let Self #self_constr = self;
+                    #(#offsets)*
+                    #(#encode_fields)*
+                }
+    /*
+                fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    const O_0: usize = 0;
+                    #(#offsets)*
+                    let mut d = #make_slicer;
+                    #(#slice_fields)*
+                    d.finish()
+                }*/
             }
-
-            fn ser(&self, raw: &mut [u8]) {
-                const O_0: usize = 0;
-                let Self #self_constr = self;
-                #(#offsets)*
-                #(#encode_fields)*
-            }
-
-            fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                const O_0: usize = 0;
-                #(#offsets)*
-                let mut d = #make_slicer;
-                #(#slice_fields)*
-                d.finish()
-            }
-        }
-    };
+        };
     Ok(r)
 }
 
@@ -482,14 +489,16 @@ impl SField {
                 quote!(#width * #len)
             }
             (FieldKind::Iso(iso), None) => {
-                quote!(<#iso as ::parsergen::Parsergen>::WIDTH)
+                quote!(<#iso as ::parsergen::HasWidth>::WIDTH)
             }
             (FieldKind::Iso(iso), Some(TypeArray { len, .. })) => {
-                quote!(<#iso as ::parsergen::Parsergen>::WIDTH * #len)
+                quote!(<#iso as ::parsergen::HasWidth>::WIDTH * #len)
             }
-            // inherited array is handled by a Parsergen impl for array
-            (FieldKind::Inherited, _) => {
-                quote!(<#ty as ::parsergen::Parsergen>::WIDTH)
+            (FieldKind::Inherited, None) => {
+                quote!(<#ty as ::parsergen::HasWidth>::WIDTH)
+            }
+            (FieldKind::Inherited, Some(TypeArray { len, elem, .. })) => {
+                quote!(<#elem as ::parsergen::HasWidth>::WIDTH * #len)
             }
         };
 
@@ -498,6 +507,8 @@ impl SField {
                 quote!(::parsergen::parse_literal::<#ty>(&#lit, slice)?)
             }
             (FieldKind::Literal(_), Some(_)) => unreachable!(),
+
+            (FieldKind::Fixed(width), None) if is_unsigned(&ty) => parse_unsigned(*width, &ty),
             (FieldKind::Fixed(width), None) if *width >= 4 => {
                 quote!(<::parsergen::FixedTV::<#ty, #width>>::des(slice)?.0)
             }
@@ -506,19 +517,27 @@ impl SField {
             }
             (FieldKind::Fixed(width), Some(TypeArray { len, elem, .. })) => {
                 if *width >= 4 {
-                    quote!(<::parsergen::FixedArrTV::<#elem, #width, #len>>::des(slice)?.0)
+                    quote!(::parsergen::des_fixed_array_vec::<#elem, {#width * #len}, {#width}, #len>(slice)?)
+                    //quote!(<::parsergen::FixedArrTV::<#elem, #width, #len>>::des(slice)?.0)
                 } else {
-                    quote!(<::parsergen::FixedArrT::<#elem, #width, #len>>::des(slice)?.0)
+                    quote!(::parsergen::des_fixed_array::<#elem, {#width * #len}, {#width}, #len>(slice)?)
+                    //                    quote!(<::parsergen::FixedArrT::<#elem, #width, #len>>::des(slice)?.0)
                 }
             }
             (FieldKind::Iso(iso), None) => {
-                quote!(<#ty>::from(<#iso as ::parsergen::Parsergen>::des(slice)?))
+                quote!(<#ty>::from(<#iso as ::parsergen::Parsergen<{#width}>>::des(slice)?))
             }
             (FieldKind::Iso(iso), Some(TypeArray { len, elem, .. })) => {
-                quote!(<::parsergen::FixedArr::<#elem, #iso, #len>>::des(slice)?.0)
+                let fwidth = quote!(<#iso as ::parsergen::HasWidth>::WIDTH);
+                quote!(::parsergen::des_iso_array::<#elem, #iso, {#fwidth * #len}, {#fwidth}, #len>(slice)?)
+                //                quote!(<::parsergen::FixedArr::<#elem, #iso, #len>>::des(slice)?.0)
             }
-            (FieldKind::Inherited, _) => {
-                quote!(<#ty as ::parsergen::Parsergen>::des(slice)?)
+            (FieldKind::Inherited, None) => {
+                quote!(<#ty as ::parsergen::Parsergen<{#width}>>::des(slice)?)
+            }
+            (FieldKind::Inherited, Some(TypeArray { len, elem, .. })) => {
+                let fwidth = quote!(<#elem as ::parsergen::HasWidth>::WIDTH);
+                quote!(::parsergen::des_array::<#elem, {#fwidth * #len}, {#fwidth}, #len>(slice)?)
             }
         };
 
@@ -528,19 +547,30 @@ impl SField {
             }
             (FieldKind::Literal(_), Some(_)) => unreachable!(),
             (FieldKind::Fixed(width), None) => {
+                //                quote!(todo!())
                 quote!(<::parsergen::FixedT::<#ty, #width>>::new(*var).ser(slice))
             }
             (FieldKind::Fixed(width), Some(TypeArray { len, elem, .. })) => {
-                quote!(<::parsergen::FixedArrT::<#elem, #width, #len>>::new(*var).ser(slice))
+                quote!(::parsergen::ser_fixed_array::<#elem, {#width * #len}, {#width}, #len>(*var, slice))
+                //                quote!(todo!("fixed arr"))
+                //                quote!(<::parsergen::FixedArrT::<#elem, #width, #len>>::new(*var).ser(slice))
             }
             (FieldKind::Iso(iso), None) => {
                 quote!(<#iso>::from(*var).ser(slice))
             }
             (FieldKind::Iso(iso), Some(TypeArray { len, elem, .. })) => {
-                quote!(<::parsergen::FixedArr<#elem, #iso, #len>>::from(*var).ser(slice))
+                let fwidth = quote!(<#iso as ::parsergen::HasWidth>::WIDTH);
+                quote!(::parsergen::ser_iso_array::<#elem, #iso, {#fwidth * #len}, {#fwidth}, #len>(*var, slice))
+                //                quote!(todo!("iso arr"))
+                //                quote!(<::parsergen::FixedArr<#elem, #iso, #len>>::from(*var).ser(slice))
             }
-            (FieldKind::Inherited, _) => {
-                quote!(<#ty as ::parsergen::Parsergen>::ser(var, slice))
+            (FieldKind::Inherited, None) => {
+                quote!(<#ty as ::parsergen::Parsergen<{#width}>>::ser(var, slice))
+            }
+            (FieldKind::Inherited, Some(TypeArray { len, elem, .. })) => {
+                let fwidth = quote!(<#elem as ::parsergen::HasWidth>::WIDTH);
+                quote!(::parsergen::ser_array::<#elem, {#fwidth * #len}, {#fwidth}, #len>(*var, slice))
+                //                quote!(todo!("inherited arr"))
             }
         };
 
@@ -557,8 +587,11 @@ impl SField {
             (FieldKind::Iso(ty), Some(TypeArray { len, .. })) => {
                 quote!(::parsergen::Sliced::<[#ty; #len]>::from)
             }
-            (FieldKind::Inherited, _) => {
+            (FieldKind::Inherited, None) => {
                 quote!(::parsergen::Sliced::<#ty>::from)
+            }
+            (FieldKind::Inherited, Some(TypeArray { len, .. })) => {
+                quote!(todo!("interited arr"))
             }
         };
         Ok(Self {
@@ -715,5 +748,107 @@ impl Parse for EnumVariant {
         } else {
             todo!("PARSE THIS {:?}", input)
         }
+    }
+}
+
+fn is_unsigned(ty: &Type) -> bool {
+    match ty {
+        Type::Group(TypeGroup { elem: ty, .. }) => is_unsigned(ty),
+        Type::Path(TypePath { path: p, .. }) => {
+            p.is_ident("u8")
+                || p.is_ident("u16")
+                || p.is_ident("u32")
+                || p.is_ident("u64")
+                || p.is_ident("u128")
+        }
+        _ => {
+            panic!("{:?} is not unsigned", ty);
+            false
+        }
+    }
+}
+
+fn parse_unsigned2(len: usize, ty: &Type) -> TokenStream {
+    let mismatch = quote! {::parsergen::Error{ _msg: "Not a valid number", _payload: raw } };
+    quote! {
+        match ::parsergen::primitives::numbers::fold_digits::<#ty>(slice) {
+            Some(val) => val,
+            None => return Err(#mismatch),
+        }
+    }
+}
+
+fn parse_unsigned(len: usize, ty: &Type) -> TokenStream {
+    let mismatch = quote! {||::parsergen::Error{ _msg: "Not a valid number", _payload: raw } };
+
+    let f = |offset: &mut usize| {
+        let rest = len - *offset;
+        if rest >= 8 {
+            let mul = 10u128.pow((len - *offset - 8) as u32);
+            let s = quote! {
+                let a = ::arrayref::array_ref!(slice, #offset, 8);
+                let v = ::parsergen::primitives::numbers::parse_8(*a)?;
+                val += v as #ty * #mul as #ty;
+            };
+            *offset += 8;
+            Some(s)
+        } else if rest >= 4 {
+            let mul = 10u128.pow((len - *offset - 4) as u32);
+            let s = quote! {
+                let a = ::arrayref::array_ref!(slice, #offset, 4);
+                let v = ::parsergen::primitives::numbers::parse_4(*a)?;
+                val += v as #ty * #mul as #ty;
+            };
+            *offset += 4;
+            Some(s)
+        } else if rest >= 1 {
+            let s = quote! {
+                let a = ::arrayref::array_ref!(slice, #offset, #rest);
+                let v = ::parsergen::primitives::numbers::fold_digits::<#ty>(a)?;
+                val += v as #ty;
+            };
+            *offset = len;
+            Some(s)
+        } else {
+            None
+        }
+    };
+
+    let parsers = unfold(0, f);
+
+    quote! {
+        (||{
+            let mut val = 0;
+            #(#parsers)*;
+            Some(val)
+        })().ok_or_else(#mismatch)?
+    }
+}
+
+fn unfold<A, St, F>(initial_state: St, f: F) -> Unfold<St, F>
+where
+    F: FnMut(&mut St) -> Option<A>,
+{
+    Unfold {
+        f,
+        state: initial_state,
+    }
+}
+
+#[derive(Clone)]
+struct Unfold<St, F> {
+    f: F,
+    pub state: St,
+}
+
+impl<A, St, F> Iterator for Unfold<St, F>
+where
+    F: FnMut(&mut St) -> Option<A>,
+{
+    type Item = A;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        (self.f)(&mut self.state)
     }
 }

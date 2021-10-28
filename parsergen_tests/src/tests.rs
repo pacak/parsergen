@@ -1,21 +1,19 @@
 use parsergen::*;
 
 #[track_caller]
-fn roundtrip<T>(raw: &[u8], parsed: T)
+fn roundtrip<T, const WIDTH: usize>(raw: &[u8; WIDTH], parsed: T)
 where
-    T: Parsergen + std::fmt::Debug + Eq + PartialEq,
+    T: Parsergen<WIDTH> + std::fmt::Debug + Eq + PartialEq,
 {
-    let mut buf = raw.to_vec();
-    for c in buf.iter_mut() {
-        *c = 0;
-    }
+    let mut buf = [0u8; WIDTH];
+    let r = T::des(raw).unwrap();
+    println!("{:?}", r);
     T::ser(&parsed, &mut buf);
-    assert_eq!(raw.len(), T::WIDTH);
-    assert_eq!(&buf, &raw, "while testing encoder");
+    assert_eq!(&buf, raw, "while testing encoder");
     assert_eq!(parsed, T::des(raw).unwrap(), "while testing decoder");
 }
 
-#[derive(Eq, PartialEq, Parsergen, Debug, Copy, Clone, Default)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone, Default, Parsergen)]
 struct X0 {
     #[parsergen(decimal: 4)]
     val: u32,
@@ -25,15 +23,27 @@ struct X0 {
 fn x0() {
     roundtrip(b"1234", X0 { val: 1234 })
 }
+/*
+#[derive(Eq, PartialEq, Debug, Copy, Clone, Default, Parsergen)]
+struct X0s {
+    a: X0,
+    b: X0,
+}
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
+//#[derive(Eq, PartialEq, Debug)]
 struct X0a {
     val: [X0; 2],
 }
 
 #[test]
 fn x0a() {
-    roundtrip(b"12345678", [X0 { val: 1234 }, X0 { val: 5678 }]);
+    roundtrip(
+        b"12345678",
+        X0a {
+            val: [X0 { val: 1234 }, X0 { val: 5678 }],
+        },
+    );
 }
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
@@ -132,7 +142,8 @@ impl From<()> for X8 {
     }
 }
 
-#[derive(Eq, PartialEq, Parsergen, Debug)]
+//#[derive(Eq, PartialEq, Parsergen, Debug)]
+#[derive(Eq, PartialEq, Debug, Parsergen)]
 struct X9 {
     #[parsergen(via: X8)]
     var: [(); 2],
@@ -282,8 +293,8 @@ struct X15(#[parsergen(decimal: 11)] u32);
 
 #[test]
 fn x15() {
-    roundtrip::<Option<X15>>(b"           ", None);
-    roundtrip::<Option<X15>>(b"00000000001", Some(X15(1)));
+    roundtrip::<Option<X15>, 11>(b"           ", None);
+    roundtrip::<Option<X15>, 11>(b"00000000001", Some(X15(1)));
 }
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
@@ -291,13 +302,13 @@ struct X15i(#[parsergen(decimal: 11)] i32);
 
 #[test]
 fn x15i() {
-    roundtrip::<Option<X15>>(b"           ", None);
-    roundtrip::<Option<X15>>(b"00000000001", Some(X15(1)));
+    roundtrip::<Option<X15>, 11>(b"           ", None);
+    roundtrip::<Option<X15>, 11>(b"00000000001", Some(X15(1)));
 }
 
 #[test]
 fn cents() {
-    roundtrip::<Cents<8>>(b" 1234.56", Cents::from(123456));
+    roundtrip::<Cents<8>, 8>(b" 1234.56", Cents::from(123456));
 }
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
@@ -305,5 +316,5 @@ struct X16(#[parsergen(via: Cents<5>)] i64);
 
 #[test]
 fn x16() {
-    roundtrip::<X16>(b" 1.23", X16(123));
-}
+    roundtrip(b" 1.23", X16(123));
+}*/

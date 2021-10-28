@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 use parsergen::primitives::*;
 use parsergen::time::{read_time12, write_time12};
@@ -56,14 +56,16 @@ struct FutPrices {
 #[derive(Copy, Clone, Debug)]
 struct Isin(u64);
 
-impl Parsergen for Isin {
+impl HasWidth for Isin {
     const WIDTH: usize = 12;
+}
 
-    fn des(raw: &[u8]) -> Result<Self> {
-        Ok(Isin(fold_isin(raw.try_into().unwrap()).unwrap().0))
+impl Parsergen<12> for Isin {
+    fn des(raw: &[u8; 12]) -> Result<Self> {
+        Ok(Isin(fold_isin(*raw).unwrap().0))
     }
 
-    fn ser(&self, raw: &mut [u8]) {
+    fn ser(&self, raw: &mut [u8; 12]) {
         let buf = unfold_isin(ISIN(self.0));
         raw.copy_from_slice(&buf);
     }
@@ -139,14 +141,16 @@ enum SessionId {
 #[derive(Copy, Clone, Debug)]
 struct Time12(u64);
 
-impl Parsergen for Time12 {
+impl HasWidth for Time12 {
     const WIDTH: usize = 12;
+}
 
-    fn des<'a>(raw: &'a [u8]) -> Result<Self> {
+impl Parsergen<12> for Time12 {
+    fn des<'a>(raw: &'a [u8; 12]) -> Result<Self> {
         Ok(Time12(read_time12(raw)?))
     }
 
-    fn ser(&self, res: &mut [u8]) {
+    fn ser(&self, res: &mut [u8; 12]) {
         write_time12(self.0, res)
     }
 
@@ -186,6 +190,7 @@ struct FutB6 {
     estimated_price: i32,
 }
 
+/*
 fn b_pqpair_arr(c: &mut Criterion) {
     let input = b" 12345123456 12345123456 12345123456 12345123456 12345123456";
     c.bench_function("PQPairFut pvec x 1", |b| {
@@ -199,7 +204,7 @@ fn b_pqpair_arr(c: &mut Criterion) {
             <[PQPairFut; 5]>::des(black_box(input)).unwrap();
         })
     });
-}
+}*/
 
 fn b_cents(c: &mut Criterion) {
     let input = b" 00001234.56";
@@ -224,6 +229,69 @@ fn b_unfold_isin(c: &mut Criterion) {
     c.bench_function("unfold_isin", |b| {
         b.iter(|| {
             unfold_isin(black_box(input));
+        })
+    });
+}
+fn des_pq2(raw: &[u8; 12]) -> parsergen::Result<PQPairFut> {
+    let mut buf = [0; 16];
+    buf[..12].copy_from_slice(raw);
+    let (_mask, [hi, lo]) = primitives::read_decimal(buf);
+    Ok(PQPairFut {
+        price: hi as i32,
+        qty: lo as u32,
+    })
+}
+
+fn b_fut_pairs_vec(c: &mut Criterion) {
+    let input = b" 12345123456";
+    let input = black_box(input);
+    c.bench_function("PQPairFut vec", |b| b.iter(|| des_pq2(input).unwrap()));
+}
+
+fn b_fut_pairs_vec_u(c: &mut Criterion) {
+    let input = b" 12345123456";
+    let input = black_box(input);
+    c.bench_function("PQPairFut vec copy paste", |b| {
+        b.iter(|| {
+            {
+                let mut buf = [0; 16];
+                buf[..12].copy_from_slice(input);
+                let (_mask, [hi, lo]) = unsafe {
+                    use core::arch::x86_64::*;
+                    use std::intrinsics::transmute;
+                    let ascii_digits = transmute::<[u8; 16], __m128i>(buf);
+                    let offset = _mm_set1_epi8((b'0' + 128) as i8);
+                    let shifted_digits = _mm_sub_epi8(ascii_digits, offset);
+                    let high_bound = _mm_set1_epi8(-128 + 10);
+                    let mask = _mm_cmpgt_epi8(high_bound, shifted_digits);
+                    let digits_mask = _mm_movemask_epi8(mask);
+
+                    let chunk = transmute(buf);
+                    let zeros = _mm_set1_epi8(b'0' as i8);
+                    let chunk = _mm_sub_epi8(chunk, zeros);
+
+                    //        let mult = _mm_set_epi8(1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10);
+                    let mult = _mm_set1_epi16(0x010a);
+                    let chunk = _mm_maddubs_epi16(chunk, mult);
+
+                    let mult = _mm_set_epi16(1, 100, 1, 100, 1, 100, 1, 100);
+                    let chunk = _mm_madd_epi16(chunk, mult);
+
+                    let chunk = _mm_packus_epi32(chunk, chunk);
+                    let mult = _mm_set_epi16(0, 0, 0, 0, 1, 10000, 1, 10000);
+                    let chunk = _mm_madd_epi16(chunk, mult);
+
+                    let re: [u32; 4] = transmute(chunk);
+                    let hi = re[0] as u64;
+                    let lo = re[1] as u64;
+
+                    (digits_mask, [hi, lo])
+                };
+                PQPairFut {
+                    price: hi as i32,
+                    qty: lo as u32,
+                }
+            }
         })
     });
 }
@@ -264,15 +332,89 @@ fn b_fut(c: &mut Criterion) {
     });
 }
 
+fn b_digit2(c: &mut Criterion) {
+    let input = black_box(b"12");
+    c.bench_function("parse_2", |b| {
+        b.iter(|| parsergen::primitives::numbers::parse_2(*input))
+    });
+    c.bench_function("parse_2 fold_digits", |b| {
+        b.iter(|| fold_digits::<u32>(input))
+    });
+}
+
+fn b_digit4(c: &mut Criterion) {
+    let input = b"9876";
+    let id = |n| BenchmarkId::new(n, std::str::from_utf8(input).unwrap());
+    use parsergen::primitives::numbers::*;
+    let mut group = c.benchmark_group("parse_4");
+    group.bench_with_input(id("composite"), input, |b, &s| {
+        b.iter(|| {
+            let _a = black_box(parse_4(s));
+        });
+    });
+
+    group.bench_with_input(id("fold"), input, |b, &s| {
+        b.iter(|| {
+            let _a = black_box(fold_digits::<u32>(&s));
+        });
+    });
+
+    group.bench_with_input(id("vectorized"), input, |b, &s| {
+        b.iter(|| {
+            let _a = black_box(fold_digits_vec::<u32>(&s));
+        });
+    });
+}
+
+fn b_digit5(c: &mut Criterion) {
+    use parsergen::primitives::numbers::*;
+    let input = black_box(b"12345");
+
+    let mut group = c.benchmark_group("parse_5");
+    group.bench_with_input(BenchmarkId::new("fold", "12345"), input, |b, &s| {
+        b.iter(|| parse_5a(s));
+    });
+    group.bench_with_input(BenchmarkId::new("composite", "12345"), input, |b, &s| {
+        b.iter(|| parse_5b(s));
+    });
+    group.bench_with_input(BenchmarkId::new("vectorized", "12345"), input, |b, &s| {
+        b.iter(|| fold_digits_vec::<u32>(&s));
+    });
+}
+
+fn b_digit8(c: &mut Criterion) {
+    let input = black_box(b"12345678");
+    c.bench_function("parse_8c", |b| b.iter(|| parse_8c(*input)));
+    c.bench_function("parse_8d", |b| b.iter(|| parse_8d(*input)));
+}
+
+fn b_digit16(c: &mut Criterion) {
+    let input = black_box(b"1234567812345678");
+    c.bench_function("parse_16d", |b| b.iter(|| parse_16d(*input)));
+    c.bench_function("parse_16c", |b| b.iter(|| parse_16c(*input)));
+    c.bench_function("parse_16d", |b| b.iter(|| parse_16d(*input)));
+    c.bench_function("parse_16c", |b| b.iter(|| parse_16c(*input)));
+}
+
+criterion_group! {
+    name = digits4;
+    config = Criterion::default();
+    targets = b_digit4, b_digit5
+}
+
 criterion_group!(
     primitive,
     b_fold_isin,
     b_unfold_isin,
     b_cents,
     b_fut_pairs,
+    b_fut_pairs_vec,
+    b_fut_pairs_vec_u,
     b_fut_dir,
     b_fut_prices,
     b_fut,
-    b_pqpair_arr,
+    b_digit2,
+    b_digit8,
+    b_digit16,
 );
-criterion_main!(primitive);
+criterion_main!(primitive, digits4);

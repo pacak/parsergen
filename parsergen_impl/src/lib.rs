@@ -27,13 +27,18 @@ impl std::fmt::Display for Error<'_> {
 
 impl<'a> std::error::Error for Error<'a> {}
 
-pub trait Parsergen {
+pub trait HasWidth {
     const WIDTH: usize;
+}
 
-    fn des(raw: &[u8]) -> Result<Self>
+pub trait Parsergen<const W: usize>
+where
+    Self: HasWidth,
+{
+    fn des(raw: &[u8; W]) -> Result<Self>
     where
         Self: Sized;
-    fn ser(&self, raw: &mut [u8]);
+    fn ser(&self, raw: &mut [u8; W]);
     fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", PrettyBytes(raw))
     }
@@ -104,80 +109,77 @@ pub fn parse_literal<'a, T: Default>(lit: &'static [u8], raw: &'a [u8]) -> Resul
 pub struct FixedArr<Ty, Iso, const CNT: usize>(pub [Ty; CNT], PhantomData<Iso>);
 impl<Ty, Iso, const CNT: usize> From<[Ty; CNT]> for FixedArr<Ty, Iso, CNT> {
     fn from(arr: [Ty; CNT]) -> Self {
-        FixedArr(arr, PhantomData::default())
+        FixedArr(arr, PhantomData)
     }
 }
-
-impl<Ty, Iso, const CNT: usize> Parsergen for FixedArr<Ty, Iso, CNT>
+/*
+impl<Ty, Iso, const WIDTH: usize, const FWIDTH: usize, const CNT: usize> Parsergen<WIDTH>
+    for FixedArr<Ty, Iso, CNT>
 where
-    Iso: Parsergen + Into<Ty>,
+    Iso: Parsergen<FWIDTH> + Into<Ty>,
     Ty: Default + Copy + Into<Iso>,
     Self: Sized,
 {
-    const WIDTH: usize = <Iso as Parsergen>::WIDTH * CNT;
-
-    fn des(raw: &[u8]) -> Result<Self> {
+    fn des(raw: &[u8; WIDTH]) -> Result<Self> {
         let mut res = [Ty::default(); CNT];
-        for (ix, raw) in raw.chunks(<Iso as Parsergen>::WIDTH).enumerate() {
+        for (ix, raw) in raw.chunks(FWIDTH).enumerate() {
             res[ix] = <Iso as Parsergen>::des(raw)?.into();
         }
         Ok(Self(res, PhantomData::default()))
     }
 
-    fn ser(&self, raw: &mut [u8]) {
-        for (&ty, raw_c) in self.0.iter().zip(raw.chunks_mut(<Iso as Parsergen>::WIDTH)) {
+    fn ser(&self, raw: &mut [u8; WIDTH]) {
+        for (&ty, raw_c) in self.0.iter().zip(raw.chunks_mut(FWIDTH)) {
             ty.into().ser(raw_c);
         }
     }
 
     fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list()
-            .entries(
-                raw.chunks(<Iso as Parsergen>::WIDTH)
-                    .map(<Sliced<Iso>>::from),
-            )
+            .entries(raw.chunks(FWIDTH).map(<Sliced<Iso>>::from))
             .finish()
     }
-}
+}*/
 
-pub struct Sliced<'a, T>(&'a [u8], PhantomData<T>);
+pub struct Sliced<'a, T, const WIDTH: usize>(&'a [u8; WIDTH], PhantomData<T>);
 
-impl<'a, T> From<&'a [u8]> for Sliced<'a, T> {
-    fn from(val: &'a [u8]) -> Self {
-        Self(val, PhantomData::default())
+impl<'a, T, const WIDTH: usize> From<&'a [u8; WIDTH]> for Sliced<'a, T, WIDTH> {
+    fn from(val: &'a [u8; WIDTH]) -> Self {
+        Self(val, PhantomData)
     }
 }
 
-impl<T: Parsergen> std::fmt::Debug for Sliced<'_, T> {
+impl<T: Parsergen<WIDTH>, const WIDTH: usize> std::fmt::Debug for Sliced<'_, T, WIDTH> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        <T as Parsergen>::slice(self.0, f)
+        <T as Parsergen<WIDTH>>::slice(self.0, f)
     }
 }
 
-pub struct SlicedOwned<T>(Vec<u8>, PhantomData<T>);
+pub struct SlicedOwned<T, const WIDTH: usize>(Vec<u8>, PhantomData<T>);
 
-impl<T> From<&[u8]> for SlicedOwned<T> {
+impl<T, const WIDTH: usize> From<&[u8]> for SlicedOwned<T, WIDTH> {
     fn from(val: &[u8]) -> Self {
         Self(Vec::from(val), PhantomData::default())
     }
 }
 
-impl<T: Parsergen> std::fmt::Debug for SlicedOwned<T> {
+impl<T: Parsergen<WIDTH>, const WIDTH: usize> std::fmt::Debug for SlicedOwned<T, WIDTH> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        <T as Parsergen>::slice(&self.0, f)
+        <T as Parsergen<WIDTH>>::slice(&self.0, f)
     }
 }
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Default)]
-pub struct Filler<const W: usize>;
-impl<const W: usize> Parsergen for Filler<W> {
-    const WIDTH: usize = W;
-
-    fn des(_raw: &[u8]) -> Result<Self> {
+pub struct Filler<const WIDTH: usize>;
+impl<const WIDTH: usize> HasWidth for Filler<WIDTH> {
+    const WIDTH: usize = WIDTH;
+}
+impl<const WIDTH: usize> Parsergen<WIDTH> for Filler<WIDTH> {
+    fn des(_raw: &[u8; WIDTH]) -> Result<Self> {
         Ok(Self)
     }
 
-    fn ser(&self, res: &mut [u8]) {
+    fn ser(&self, res: &mut [u8; WIDTH]) {
         for c in res.iter_mut() {
             *c = b' '
         }
@@ -188,10 +190,12 @@ impl<const W: usize> Parsergen for Filler<W> {
     }
 }
 
-impl<T: Parsergen> Parsergen for Option<T> {
+impl<T: HasWidth> HasWidth for Option<T> {
     const WIDTH: usize = T::WIDTH;
+}
 
-    fn des(raw: &[u8]) -> Result<Self> {
+impl<T: Parsergen<WIDTH> + HasWidth, const WIDTH: usize> Parsergen<WIDTH> for Option<T> {
+    fn des(raw: &[u8; WIDTH]) -> Result<Self> {
         match T::des(raw) {
             Ok(ok) => Ok(Some(ok)),
             Err(_) if raw.iter().all(|sym| *sym == b' ') => Ok(None),
@@ -202,7 +206,7 @@ impl<T: Parsergen> Parsergen for Option<T> {
         }
     }
 
-    fn ser(&self, res: &mut [u8]) {
+    fn ser(&self, res: &mut [u8; WIDTH]) {
         match self {
             Some(nested) => nested.ser(res),
             None => {
@@ -218,59 +222,135 @@ impl<T: Parsergen> Parsergen for Option<T> {
     }
 }
 
-impl<T, const CNT: usize> Parsergen for [T; CNT]
-where
-    T: Parsergen + Default + Copy,
-{
-    const WIDTH: usize = T::WIDTH * CNT;
+pub fn des_array<
+    T: Parsergen<FWIDTH> + Default + Copy,
+    const WIDTH: usize,
+    const FWIDTH: usize,
+    const CNT: usize,
+>(
+    raw: &[u8; WIDTH],
+) -> Result<[T; CNT]> {
+    let mut res: [T; CNT] = [T::default(); CNT];
 
-    #[inline(always)]
-    fn des(raw: &[u8]) -> Result<Self> {
+    assert_eq!(WIDTH, FWIDTH * CNT);
+    for (ix, chunk) in raw.chunks(FWIDTH).enumerate() {
+        let buf = <[u8; FWIDTH]>::try_from(chunk).unwrap();
+        match T::des(&buf) {
+            Ok(ok) => res[ix] = ok,
+            Err(err) => {
+                return Err(Error {
+                    _payload: raw, // TODO - use proper slice reference
+                    ..err
+                });
+            }
+        }
+    }
+
+    Ok(res)
+}
+
+pub fn des_iso_array<T, Iso, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
+    raw: &[u8; WIDTH],
+) -> Result<[T; CNT]>
+where
+    Iso: Parsergen<FWIDTH>,
+    T: Default + Copy,
+    T: From<Iso>,
+{
+    let mut res = [T::default(); CNT];
+
+    assert_eq!(WIDTH, FWIDTH * CNT);
+    for (ix, chunk) in raw.chunks(FWIDTH).enumerate() {
+        let buf = <[u8; FWIDTH]>::try_from(chunk).unwrap();
+        match Iso::des(&buf) {
+            Ok(ok) => res[ix] = T::from(ok),
+            Err(err) => {
+                return Err(Error {
+                    _payload: raw, // TODO - use proper slice reference
+                    ..err
+                });
+            }
+        }
+    }
+
+    Ok(res)
+}
+//                quote!(<::parsergen::des_iso_array::<#elem, #iso, {#width * #len}, {#width}, #len>(slice)?)
+
+pub fn ser_array<
+    T: Parsergen<FWIDTH> + Default + Copy,
+    const WIDTH: usize,
+    const FWIDTH: usize,
+    const CNT: usize,
+>(
+    arr: [T; CNT],
+    raw: &mut [u8; WIDTH],
+) {
+    assert_eq!(WIDTH, FWIDTH * CNT);
+    for (ix, chunk) in raw.chunks_mut(FWIDTH).enumerate() {
+        let buf = <&mut [u8; FWIDTH]>::try_from(chunk).unwrap();
+        arr[ix].ser(buf)
+    }
+}
+
+pub fn ser_iso_array<T, Iso, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
+    arr: [T; CNT],
+    raw: &mut [u8; WIDTH],
+) where
+    T: Default + Copy,
+    Iso: Parsergen<FWIDTH> + From<T>,
+{
+    assert_eq!(WIDTH, FWIDTH * CNT);
+    for (ix, chunk) in raw.chunks_mut(FWIDTH).enumerate() {
+        let buf = <&mut [u8; FWIDTH]>::try_from(chunk).unwrap();
+
+        Iso::from(arr[ix]).ser(buf)
+    }
+}
+
+/*
+impl<T, const FWIDTH: usize, const WIDTH: usize, const CNT: usize> Parsergen<WIDTH> for [T; CNT]
+where
+    T: Parsergen<FWIDTH> + Default + Copy,
+{
+    fn des(raw: &[u8; WIDTH]) -> Result<Self> {
         let mut res = [T::default(); CNT];
-        for (ix, raw) in raw.chunks(T::WIDTH).enumerate() {
+        for (ix, raw) in raw.chunks(FWIDTH).enumerate() {
             res[ix] = T::des(raw)?;
         }
         Ok(res)
     }
 
-    fn ser(&self, raw: &mut [u8]) {
-        for (&ty, raw_c) in self.iter().zip(raw.chunks_mut(<T as Parsergen>::WIDTH)) {
+    fn ser(&self, raw: &mut [u8; WIDTH]) {
+        for (&ty, raw_c) in self.iter().zip(raw.chunks_mut(FWIDTH)) {
             ty.ser(raw_c);
         }
     }
 
     fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list()
-            .entries(raw.chunks(<T as Parsergen>::WIDTH).map(<Sliced<T>>::from))
+            .entries(raw.chunks(FWIDTH).map(<Sliced<T>>::from))
             .finish()
     }
+}*/
+
+impl<const WIDTH: usize> HasWidth for [u8; WIDTH] {
+    const WIDTH: usize = WIDTH;
 }
-
-impl<const CNT: usize> Parsergen for [u8; CNT] {
-    const WIDTH: usize = CNT;
-
-    fn des(raw: &[u8]) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        let mut res = [0; CNT];
-        for (p, c) in res.iter_mut().zip(raw.iter()) {
-            *p = *c;
-        }
-        Ok(res)
+impl<const WIDTH: usize> Parsergen<WIDTH> for [u8; WIDTH] {
+    fn des(raw: &[u8; WIDTH]) -> Result<Self> {
+        Ok(*raw)
     }
 
-    fn ser(&self, raw: &mut [u8]) {
-        for (p, c) in raw.iter_mut().zip(self.iter()) {
-            *p = *c;
-        }
+    fn ser(&self, raw: &mut [u8; WIDTH]) {
+        *raw = *self;
     }
 
     fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", PrettyBytes(raw))
     }
 }
-
+/*
 pub fn encode<T: Parsergen>(val: &T) -> Vec<u8> {
     let mut res = vec![0; T::WIDTH];
     val.ser(&mut res);
@@ -279,7 +359,7 @@ pub fn encode<T: Parsergen>(val: &T) -> Vec<u8> {
 
 pub fn decode<T: Parsergen>(raw: &[u8]) -> Option<T> {
     T::des(raw).ok()
-}
+}*/
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 /// Given amount in cents will render it as CNT wide field:
@@ -297,11 +377,12 @@ impl<const CNT: usize> From<Cents<CNT>> for i64 {
         val.0
     }
 }
+impl<const WIDTH: usize> HasWidth for Cents<WIDTH> {
+    const WIDTH: usize = WIDTH;
+}
 
-impl<const CNT: usize> Parsergen for Cents<CNT> {
-    const WIDTH: usize = CNT;
-
-    fn des(raw: &[u8]) -> Result<Self>
+impl<const WIDTH: usize> Parsergen<WIDTH> for Cents<WIDTH> {
+    fn des(raw: &[u8; WIDTH]) -> Result<Self>
     where
         Self: Sized,
     {
@@ -316,20 +397,20 @@ impl<const CNT: usize> Parsergen for Cents<CNT> {
                 })
             }
         };
-        if raw[CNT - 3] != b'.' {
+        if raw[WIDTH - 3] != b'.' {
             return Err(Error {
                 _msg: "missing dot in cents",
                 _payload: raw,
             });
         }
 
-        let num1: u64 = fold_digits(&raw[1..CNT - 3])?;
-        let num2: u64 = fold_digits(&raw[CNT - 2..])?;
+        let num1: u64 = fold_digits(&raw[1..WIDTH - 3])?;
+        let num2: u64 = fold_digits(&raw[WIDTH - 2..])?;
 
         Ok(Cents(sign * (num1 as i64 * 100 + num2 as i64)))
     }
 
-    fn ser(&self, raw: &mut [u8]) {
+    fn ser(&self, raw: &mut [u8; WIDTH]) {
         if self.0 >= 0 {
             raw[0] = b' ';
         } else {
@@ -338,37 +419,30 @@ impl<const CNT: usize> Parsergen for Cents<CNT> {
         let num = self.0.abs();
         let num1 = num / 100;
         let num2 = num % 100;
-        raw[CNT - 3] = b'.';
-        unfold_digits(num1, &mut raw[1..CNT - 3]);
-        unfold_digits(num2, &mut raw[CNT - 2..]);
+        raw[WIDTH - 3] = b'.';
+        unfold_digits(num1, &mut raw[1..WIDTH - 3]);
+        unfold_digits(num2, &mut raw[WIDTH - 2..]);
     }
 }
 
-impl Parsergen for primitives::ISIN {
+impl HasWidth for primitives::ISIN {
     const WIDTH: usize = 12;
-
-    fn des(raw: &[u8]) -> Result<Self>
+}
+impl Parsergen<12> for primitives::ISIN {
+    fn des(raw: &[u8; 12]) -> Result<Self>
     where
         Self: Sized,
     {
-        use std::convert::TryFrom;
-        let err = Error {
-            _msg: "Not an ISIN",
-            _payload: raw,
-        };
-        match <[u8; 12]>::try_from(raw) {
-            Ok(buf) => match fold_isin(buf) {
-                Some(isin) => Ok(isin),
-                None => Err(err),
-            },
-            Err(_) => Err(err),
+        match fold_isin(*raw) {
+            Some(isin) => Ok(isin),
+            None => Err(Error {
+                _msg: "Not an ISIN",
+                _payload: raw,
+            }),
         }
     }
 
-    fn ser(&self, raw: &mut [u8]) {
-        let buf = primitives::unfold_isin(*self);
-        for (t, s) in raw.iter_mut().zip(buf.iter()) {
-            *t = *s;
-        }
+    fn ser(&self, raw: &mut [u8; 12]) {
+        *raw = primitives::unfold_isin(*self);
     }
 }
