@@ -41,6 +41,16 @@ where
     fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", PrettyBytes(raw))
     }
+
+    fn decode(raw: &[u8]) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        match raw.try_into() {
+            Ok(arr) => Self::des(arr),
+            Err(_) => None,
+        }
+    }
 }
 
 //
