@@ -317,3 +317,11 @@ struct X16(#[parsergen(via: Cents<5>)] i64);
 fn x16() {
     roundtrip(b" 1.23", X16(123));
 }
+
+#[derive(Eq, PartialEq, Parsergen, Debug)]
+struct X17(Blob<4>);
+
+#[test]
+fn x17() {
+    roundtrip(b"1234", X17(Blob(*b"1234")));
+}

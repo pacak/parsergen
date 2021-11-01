@@ -162,6 +162,26 @@ impl<T: Parsergen<WIDTH>, const WIDTH: usize> std::fmt::Debug for SlicedOwned<T,
     }
 }
 
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+pub struct Blob<const WIDTH: usize>(pub [u8; WIDTH]);
+impl<const WIDTH: usize> HasWidth for Blob<WIDTH> {
+    const WIDTH: usize = WIDTH;
+}
+
+impl<const WIDTH: usize> Parsergen<WIDTH> for Blob<WIDTH> {
+    fn des(raw: &[u8; WIDTH]) -> Option<Self> {
+        Some(Self(*raw))
+    }
+
+    fn ser(&self, res: &mut [u8; WIDTH]) {
+        *res = self.0;
+    }
+
+    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", PrettyBytes(raw))
+    }
+}
+
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Default)]
 pub struct Filler<const WIDTH: usize>;
 impl<const WIDTH: usize> HasWidth for Filler<WIDTH> {
