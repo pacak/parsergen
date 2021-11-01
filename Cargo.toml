@@ -12,7 +12,7 @@ arrayref = "*"
 
 [dev-dependencies]
 criterion = { version = "0.3.5", features=["html_reports"] }
-fixed_width_num_ops = { path = "./fixed_width_num_ops" }
+#fixed_width_num_ops = { path = "./fixed_width_num_ops" }
 iai = "*"
 
 [[bench]]

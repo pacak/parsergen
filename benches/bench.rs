@@ -61,8 +61,8 @@ impl HasWidth for Isin {
 }
 
 impl Parsergen<12> for Isin {
-    fn des(raw: &[u8; 12]) -> Result<Self> {
-        Ok(Isin(fold_isin(*raw).unwrap().0))
+    fn des(raw: &[u8; 12]) -> Option<Self> {
+        Some(Isin(fold_isin(*raw).unwrap().0))
     }
 
     fn ser(&self, raw: &mut [u8; 12]) {
@@ -146,8 +146,8 @@ impl HasWidth for Time12 {
 }
 
 impl Parsergen<12> for Time12 {
-    fn des<'a>(raw: &'a [u8; 12]) -> Result<Self> {
-        Ok(Time12(read_time12(raw)?))
+    fn des<'a>(raw: &'a [u8; 12]) -> Option<Self> {
+        Some(Time12(read_time12(raw)?))
     }
 
     fn ser(&self, res: &mut [u8; 12]) {
@@ -232,11 +232,11 @@ fn b_unfold_isin(c: &mut Criterion) {
         })
     });
 }
-fn des_pq2(raw: &[u8; 12]) -> parsergen::Result<PQPairFut> {
+fn des_pq2(raw: &[u8; 12]) -> Option<PQPairFut> {
     let mut buf = [0; 16];
     buf[..12].copy_from_slice(raw);
     let (_mask, [hi, lo]) = primitives::read_decimal(buf);
-    Ok(PQPairFut {
+    Some(PQPairFut {
         price: hi as i32,
         qty: lo as u32,
     })

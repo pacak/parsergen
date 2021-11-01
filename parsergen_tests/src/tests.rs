@@ -23,7 +23,7 @@ struct X0 {
 fn x0() {
     roundtrip(b"1234", X0 { val: 1234 })
 }
-/*
+
 #[derive(Eq, PartialEq, Debug, Copy, Clone, Default, Parsergen)]
 struct X0s {
     a: X0,
@@ -142,7 +142,6 @@ impl From<()> for X8 {
     }
 }
 
-//#[derive(Eq, PartialEq, Parsergen, Debug)]
 #[derive(Eq, PartialEq, Debug, Parsergen)]
 struct X9 {
     #[parsergen(via: X8)]
@@ -317,4 +316,4 @@ struct X16(#[parsergen(via: Cents<5>)] i64);
 #[test]
 fn x16() {
     roundtrip(b" 1.23", X16(123));
-}*/
+}

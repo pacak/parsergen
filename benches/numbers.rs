@@ -1,5 +1,4 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use fixed_width_num_ops::*;
 use parsergen::*;
 
 fn unsigned_decimals(c: &mut Criterion) {
@@ -201,83 +200,10 @@ fn unsigned_decimal_groups(c: &mut Criterion) {
     check!(37, NumbersGBench37, u128);*/
 }
 
-fn experiment(c: &mut Criterion) {
-    let mut payload = Vec::new();
-    for i in 1..500 {
-        payload.push((i % 10) as u8 + b'0')
-    }
-    use parsergen::primitives::numbers::*;
-
-    ///////////////////////////////////////////////////////////////////////////////
-    struct NumbersGBench16 {
-        val1: u64,
-        val2: u64,
-    }
-    impl ::parsergen::HasWidth for NumbersGBench16 {
-        const WIDTH: usize = 16usize + 16usize;
-    }
-    impl ::parsergen::Parsergen<{ 16usize + 16usize }> for NumbersGBench16 {
-        fn des(raw: &[u8; 16usize + 16usize]) -> Option<Self> {
-            const O_0: usize = 0;
-            const O_1: usize = 0 + 16usize;
-            const O_2: usize = O_1 + 16usize;
-            let slice = ::arrayref::array_ref!(raw, O_0, O_1 - O_0);
-
-            let mut val = 0;
-            let a = ::arrayref::array_ref!(slice, 0usize, 8);
-            let v = ::parsergen::primitives::numbers::parse_8(*a)?;
-            val += v as u64 * 100000000u128 as u64;
-            let a = ::arrayref::array_ref!(slice, 8usize, 8);
-            let v = ::parsergen::primitives::numbers::parse_8(*a)?;
-            val += v as u64 * 1u128 as u64;
-            let val1 = val;
-
-            let slice = ::arrayref::array_ref!(raw, O_1, O_2 - O_1);
-
-            let mut val = 0;
-            let a = ::arrayref::array_ref!(slice, 0usize, 8);
-            let v = ::parsergen::primitives::numbers::parse_8(*a)?;
-            val += v as u64 * 100000000u128 as u64;
-            let a = ::arrayref::array_ref!(slice, 8usize, 8);
-            let v = ::parsergen::primitives::numbers::parse_8(*a)?;
-            val += v as u64 * 1u128 as u64;
-            let val2 = val;
-            Some(Self { val1, val2 })
-        }
-        fn ser(&self, raw: &mut [u8; 16usize + 16usize]) {
-            const O_0: usize = 0;
-            let Self { val1, val2 } = self;
-            const O_1: usize = 0 + 16usize;
-            const O_2: usize = O_1 + 16usize;
-            let var = val1;
-            let slice = ::arrayref::array_mut_ref!(raw, O_0, O_1 - O_0);
-            <::parsergen::FixedT<u64, 16usize>>::new(*var).ser(slice);
-            let var = val2;
-            let slice = ::arrayref::array_mut_ref!(raw, O_1, O_2 - O_1);
-            <::parsergen::FixedT<u64, 16usize>>::new(*var).ser(slice);
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////
-
-    const LEN: usize = 16;
-
-    let input: [u8; LEN * 2] = payload[..LEN * 2].try_into().unwrap();
-    let id = |n| BenchmarkId::new(n, std::str::from_utf8(&input).unwrap());
-    let mut group = c.benchmark_group("experiment");
-
-    group.bench_with_input(id("composite"), &input, |b, &s| {
-        b.iter(|| {
-            let _a = black_box(NumbersGBench16::des(&s));
-        });
-    });
-    drop(group);
-}
-
 criterion_group! {
     name = digits;
     config = Criterion::default();
-    targets = unsigned_decimals, unsigned_decimal_groups, experiment
+    targets = unsigned_decimals, unsigned_decimal_groups
 }
 
 //criterion_group!(primitive, unsigned_decimals, unsigned_decimal_array);

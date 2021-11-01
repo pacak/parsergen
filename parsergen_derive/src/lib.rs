@@ -4,7 +4,7 @@ use std::iter::FromIterator;
 use syn::{parse::Parse, punctuated::Punctuated, spanned::Spanned, *};
 
 mod annotation;
-use crate::primitives::{parse_fixed_impl, ParseInput};
+use crate::primitives::{parse_fixed_arr_inner, parse_fixed_impl, parse_fixed_inner, ParseInput};
 
 use self::annotation::*;
 
@@ -23,7 +23,7 @@ pub fn derive_decode(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 #[proc_macro]
 pub fn parse_fixed(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let x = parse_fixed_impl(parse_macro_input!(input as ParseInput)).into();
-    println!("{}", x);
+    //    println!("{}", x);
     x
 }
 
@@ -33,7 +33,7 @@ fn derive_decode_impl(input: DecodeInput) -> Result<TokenStream> {
         DecodeInput::Struct(StructInput::Unit(x)) => for_unit_struct(x),
         DecodeInput::Enum(x) => for_enum(x),
     }?;
-    println!("{}", r);
+    //    println!("{}", r);
     Ok(r)
 }
 
@@ -62,7 +62,7 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
             quote! {
                 let tmp: Option<#fty> = (|slice|Some(#parser))(raw);
                 match tmp {
-                    None(_) => {},
+                    None => {},
                     Some(#name) => return Some(Self::#ty #self_constr),
                 }
             }
@@ -517,21 +517,13 @@ impl SField {
             }
             (FieldKind::Literal(_), Some(_)) => unreachable!(),
 
-            (FieldKind::Fixed(width), None) if is_unsigned(&ty) => parse_unsigned(*width, &ty),
-            (FieldKind::Fixed(width), None) if *width >= 4 => {
-                quote!(<::parsergen::FixedTV::<#ty, #width>>::des(slice)?.0)
+            (&FieldKind::Fixed(width), None) => {
+                let style = crate::primitives::get_style(&ty)?;
+                parse_fixed_inner(&ty, style, width)
             }
-            (FieldKind::Fixed(width), None) => {
-                quote!(<::parsergen::FixedT::<#ty, #width>>::des(slice)?.0)
-            }
-            (FieldKind::Fixed(width), Some(TypeArray { len, elem, .. })) => {
-                if *width >= 4 {
-                    quote!(::parsergen::des_fixed_array_vec::<#elem, {#width * #len}, {#width}, #len>(slice)?)
-                    //quote!(<::parsergen::FixedArrTV::<#elem, #width, #len>>::des(slice)?.0)
-                } else {
-                    quote!(::parsergen::des_fixed_array::<#elem, {#width * #len}, {#width}, #len>(slice)?)
-                    //                    quote!(<::parsergen::FixedArrT::<#elem, #width, #len>>::des(slice)?.0)
-                }
+            (&FieldKind::Fixed(width), Some(TypeArray { len, elem, .. })) => {
+                let style = crate::primitives::get_style(elem)?;
+                parse_fixed_arr_inner(elem, style, width, len)
             }
             (FieldKind::Iso(iso), None) => {
                 quote!(<#ty>::from(<#iso as ::parsergen::Parsergen<{#width}>>::des(slice)?))
@@ -757,140 +749,5 @@ impl Parse for EnumVariant {
         } else {
             todo!("PARSE THIS {:?}", input)
         }
-    }
-}
-
-fn is_unsigned(ty: &Type) -> bool {
-    match ty {
-        Type::Group(TypeGroup { elem: ty, .. }) => is_unsigned(ty),
-        Type::Path(TypePath { path: p, .. }) => {
-            p.is_ident("u8")
-                || p.is_ident("u16")
-                || p.is_ident("u32")
-                || p.is_ident("u64")
-                || p.is_ident("u128")
-        }
-        _ => {
-            panic!("{:?} is not unsigned", ty);
-            false
-        }
-    }
-}
-
-fn parse_unsigned3(len: usize, ty: &Type) -> TokenStream {
-    let mismatch = quote! {::parsergen::Error{ _msg: "Not a valid number", _payload: raw } };
-    quote! {
-        match ::lexical_core::parse::<#ty>(slice) {
-            Ok(val) => val,
-            Err(_) => return None,
-        }
-    }
-}
-
-fn parse_unsigned2(len: usize, ty: &Type) -> TokenStream {
-    let mismatch = quote! {::parsergen::Error{ _msg: "Not a valid number", _payload: raw } };
-    quote! {
-        match ::parsergen::primitives::numbers::fold_digits::<#ty>(slice) {
-            Some(val) => val,
-            None => return Err(#mismatch),
-        }
-    }
-}
-
-fn parse_unsigned(len: usize, ty: &Type) -> TokenStream {
-    let f = |offset: &mut usize| {
-        let rest = len - *offset;
-        if rest >= 8 {
-            let mul = 10u128.pow((len - *offset - 8) as u32);
-            let s = quote! {
-                let a = ::arrayref::array_ref!(slice, #offset, 8);
-                let v = ::parsergen::primitives::numbers::parse_8(*a)?;
-                val += v as #ty * #mul as #ty;
-            };
-            *offset += 8;
-            Some(s)
-        } else if rest >= 4 {
-            let mul = 10u128.pow((len - *offset - 4) as u32);
-            let s = quote! {
-                let a = ::arrayref::array_ref!(slice, #offset, 4);
-                let v = ::parsergen::primitives::numbers::parse_4(*a)?;
-                val += v as #ty * #mul as #ty;
-            };
-            *offset += 4;
-            Some(s)
-        } else if rest == 3 {
-            let s = quote! {
-                let a = ::arrayref::array_ref!(slice, #offset, #rest);
-                let v = ::parsergen::primitives::numbers::parse_3(*a)?;
-                val += v as #ty;
-            };
-            *offset = len;
-            Some(s)
-        } else if rest == 2 {
-            let s = quote! {
-                let a = ::arrayref::array_ref!(slice, #offset, #rest);
-                let v = ::parsergen::primitives::numbers::parse_2(*a)?;
-                val += v as #ty;
-            };
-            *offset = len;
-            Some(s)
-        } else if rest == 1 {
-            let s = quote! {
-                let a = ::arrayref::array_ref!(slice, #offset, #rest);
-                let v = ::parsergen::primitives::numbers::parse_1(*a)?;
-                val += v as #ty;
-            };
-            *offset = len;
-            Some(s)
-            /*
-            } else if rest >= 1 {
-                let s = quote! {
-                    let a = ::arrayref::array_ref!(slice, #offset, #rest);
-                    let v = ::parsergen::primitives::numbers::fold_digits::<#ty>(a)?;
-                    val += v as #ty;
-                };
-                *offset = len;
-                Some(s)*/
-        } else {
-            None
-        }
-    };
-
-    let parsers = unfold(0, f);
-
-    quote! {
-        (||{
-            let mut val = 0;
-            #(#parsers)*;
-            Some(val)
-        })()?
-    }
-}
-
-fn unfold<A, St, F>(initial_state: St, f: F) -> Unfold<St, F>
-where
-    F: FnMut(&mut St) -> Option<A>,
-{
-    Unfold {
-        f,
-        state: initial_state,
-    }
-}
-
-#[derive(Clone)]
-struct Unfold<St, F> {
-    f: F,
-    pub state: St,
-}
-
-impl<A, St, F> Iterator for Unfold<St, F>
-where
-    F: FnMut(&mut St) -> Option<A>,
-{
-    type Item = A;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        (self.f)(&mut self.state)
     }
 }

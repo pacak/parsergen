@@ -8,7 +8,7 @@ pub struct ParseInput {
     width: usize,
 }
 
-enum Style {
+pub enum Style {
     Signed(TokenStream),
     Unsigned,
 }
@@ -23,7 +23,7 @@ impl Parse for ParseInput {
     }
 }
 
-fn get_style(ty: &Type) -> Result<Style> {
+pub fn get_style(ty: &Type) -> Result<Style> {
     match ty {
         Type::Group(TypeGroup { elem: ty, .. }) => get_style(ty),
         Type::Path(TypePath { path: p, .. }) => Ok(if p.is_ident("u8") {
@@ -157,6 +157,40 @@ fn parse_unsigned_bit(width: usize, ty: TokenStream) -> impl Fn(&mut usize) -> O
             None
         }
     }
+}
+
+pub fn parse_fixed_arr_inner(ty: &Type, style: Style, width: usize, cnt: &Expr) -> TokenStream {
+    let inner = parse_fixed_impl(ParseInput {
+        ty: ty.clone(),
+        style,
+        width,
+    });
+
+    let parser = quote!( |input: [u8; #width * #cnt]| {
+        unsafe fn as_array<const N: usize>(slice: &[u8]) -> &[u8; N] {
+            &*(slice.as_ptr() as *const [u8; N])
+        }
+
+        let mut res = [0; #cnt];
+        let inner = #inner;
+        for i in 0..#cnt {
+            let offset = i * #width;
+            let slice = unsafe { as_array::<#width>(&input[offset .. offset + #width]) };
+            res[i] = inner(*slice)?;
+        }
+        Some(res)
+    });
+
+    quote!((#parser)(*slice)?)
+}
+
+pub fn parse_fixed_inner(ty: &Type, style: Style, width: usize) -> TokenStream {
+    let parser = parse_fixed_impl(ParseInput {
+        ty: ty.clone(),
+        style,
+        width,
+    });
+    quote!((#parser)(*slice)?)
 }
 
 pub fn parse_fixed_impl(ParseInput { ty, style, width }: ParseInput) -> TokenStream {
