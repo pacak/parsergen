@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use fixed_width_num_ops::*;
+use parsergen::*;
 
 fn unsigned_decimals(c: &mut Criterion) {
     let payload = b"1234567890123456789012345678901234567890";
@@ -122,5 +122,4 @@ criterion_group! {
     targets = unsigned_decimals, signed_decimals,
 }
 
-//criterion_group!(primitive, unsigned_decimals, unsigned_decimal_array);
 criterion_main!(digits);
