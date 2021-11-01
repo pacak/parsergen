@@ -23,14 +23,8 @@ name = "time"
 harness = false
 
 [[bench]]
-name = "numbers"
-harness = false
-
-[[bench]]
 name = "parse_fixed"
 harness = false
-
-
 
 [[bench]]
 name = "iai"

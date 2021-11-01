@@ -332,76 +332,6 @@ fn b_fut(c: &mut Criterion) {
     });
 }
 
-fn b_digit2(c: &mut Criterion) {
-    let input = black_box(b"12");
-    c.bench_function("parse_2", |b| {
-        b.iter(|| parsergen::primitives::numbers::parse_2(*input))
-    });
-    c.bench_function("parse_2 fold_digits", |b| {
-        b.iter(|| fold_digits::<u32>(input))
-    });
-}
-
-fn b_digit4(c: &mut Criterion) {
-    let input = b"9876";
-    let id = |n| BenchmarkId::new(n, std::str::from_utf8(input).unwrap());
-    use parsergen::primitives::numbers::*;
-    let mut group = c.benchmark_group("parse_4");
-    group.bench_with_input(id("composite"), input, |b, &s| {
-        b.iter(|| {
-            let _a = black_box(parse_4(s));
-        });
-    });
-
-    group.bench_with_input(id("fold"), input, |b, &s| {
-        b.iter(|| {
-            let _a = black_box(fold_digits::<u32>(&s));
-        });
-    });
-
-    group.bench_with_input(id("vectorized"), input, |b, &s| {
-        b.iter(|| {
-            let _a = black_box(fold_digits_vec::<u32>(&s));
-        });
-    });
-}
-
-fn b_digit5(c: &mut Criterion) {
-    use parsergen::primitives::numbers::*;
-    let input = black_box(b"12345");
-
-    let mut group = c.benchmark_group("parse_5");
-    group.bench_with_input(BenchmarkId::new("fold", "12345"), input, |b, &s| {
-        b.iter(|| parse_5a(s));
-    });
-    group.bench_with_input(BenchmarkId::new("composite", "12345"), input, |b, &s| {
-        b.iter(|| parse_5b(s));
-    });
-    group.bench_with_input(BenchmarkId::new("vectorized", "12345"), input, |b, &s| {
-        b.iter(|| fold_digits_vec::<u32>(&s));
-    });
-}
-
-fn b_digit8(c: &mut Criterion) {
-    let input = black_box(b"12345678");
-    c.bench_function("parse_8c", |b| b.iter(|| parse_8c(*input)));
-    c.bench_function("parse_8d", |b| b.iter(|| parse_8d(*input)));
-}
-
-fn b_digit16(c: &mut Criterion) {
-    let input = black_box(b"1234567812345678");
-    c.bench_function("parse_16d", |b| b.iter(|| parse_16d(*input)));
-    c.bench_function("parse_16c", |b| b.iter(|| parse_16c(*input)));
-    c.bench_function("parse_16d", |b| b.iter(|| parse_16d(*input)));
-    c.bench_function("parse_16c", |b| b.iter(|| parse_16c(*input)));
-}
-
-criterion_group! {
-    name = digits4;
-    config = Criterion::default();
-    targets = b_digit4, b_digit5
-}
-
 criterion_group!(
     primitive,
     b_fold_isin,
@@ -413,8 +343,5 @@ criterion_group!(
     b_fut_dir,
     b_fut_prices,
     b_fut,
-    b_digit2,
-    b_digit8,
-    b_digit16,
 );
-criterion_main!(primitive, digits4);
+criterion_main!(primitive);
