@@ -29,7 +29,7 @@ impl<T, const WIDTH: usize> FixedTV<T, WIDTH> {
 
 pub fn des_fixed_array<T, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
     raw: &[u8; WIDTH],
-) -> Result<[T; CNT]>
+) -> Option<[T; CNT]>
 where
     FixedT<T, FWIDTH>: Parsergen<FWIDTH>,
     T: Default + Copy,
@@ -38,17 +38,9 @@ where
     let mut res = [T::default(); CNT];
     for (ix, chunk) in raw.chunks(FWIDTH).enumerate() {
         let buf = <[u8; FWIDTH]>::try_from(chunk).unwrap();
-        match FixedT::<T, FWIDTH>::des(&buf) {
-            Ok(ok) => res[ix] = ok.0,
-            Err(err) => {
-                return Err(Error {
-                    _payload: raw, // TODO - use proper slice reference
-                    ..err
-                });
-            }
-        }
+        res[ix] = FixedT::<T, FWIDTH>::des(&buf)?.0;
     }
-    Ok(res)
+    Some(res)
 }
 
 pub fn ser_fixed_array<T, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
@@ -67,7 +59,7 @@ pub fn ser_fixed_array<T, const WIDTH: usize, const FWIDTH: usize, const CNT: us
 
 pub fn des_fixed_array_vec<T, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
     raw: &[u8; WIDTH],
-) -> Result<[T; CNT]>
+) -> Option<[T; CNT]>
 where
     T: Default + Copy,
     FixedTV<T, FWIDTH>: Parsergen<FWIDTH>,
@@ -76,27 +68,17 @@ where
     let mut res = [T::default(); CNT];
     for (ix, chunk) in raw.chunks(FWIDTH).enumerate() {
         let buf = <[u8; FWIDTH]>::try_from(chunk).unwrap();
-        match FixedTV::<T, FWIDTH>::des(&buf) {
-            Ok(ok) => res[ix] = ok.0,
-            Err(err) => {
-                return Err(Error {
-                    _payload: raw, // TODO - use proper slice reference
-                    ..err
-                });
-            }
-        }
+        res[ix] = FixedTV::<T, FWIDTH>::des(&buf)?.0;
     }
-    Ok(res)
+    Some(res)
 }
 
 macro_rules! derive_unsigned {
     ($ty:ty) => {
         impl<const WIDTH: usize> Parsergen<WIDTH> for FixedT<$ty, WIDTH> {
             #[inline(always)]
-            fn des(raw: &[u8; WIDTH]) -> Result<Self> {
-                width_check::<WIDTH>(raw, "invalid width for FixedT")?;
-
-                Ok(FixedT(fold_digits(raw)?))
+            fn des(raw: &[u8; WIDTH]) -> Option<Self> {
+                Some(FixedT(fold_digits(raw)?))
             }
 
             fn ser(&self, res: &mut [u8; WIDTH]) {
@@ -106,9 +88,8 @@ macro_rules! derive_unsigned {
 
         impl<const WIDTH: usize> Parsergen<WIDTH> for FixedTV<$ty, WIDTH> {
             #[inline(always)]
-            fn des(raw: &[u8; WIDTH]) -> Result<Self> {
-                width_check::<WIDTH>(raw, "invalid width for FixedT")?;
-                Ok(Self(fold_digits_vec::<$ty>(raw)?))
+            fn des(raw: &[u8; WIDTH]) -> Option<Self> {
+                Some(Self(fold_digits_vec::<$ty>(raw)?))
             }
 
             fn ser(&self, res: &mut [u8; WIDTH]) {
@@ -122,16 +103,13 @@ macro_rules! derive_signed {
     ($ty:ty, $ti:ty) => {
         impl<const WIDTH: usize> Parsergen<WIDTH> for FixedT<$ty, WIDTH> {
             #[inline(always)]
-            fn des(raw: &[u8; WIDTH]) -> Result<Self> {
+            fn des(raw: &[u8; WIDTH]) -> Option<Self> {
                 width_check::<WIDTH>(raw, "invalid width for FixedT")?;
                 let acc: $ti = fold_digits(&raw[1..])?;
                 match raw[0] {
-                    b'0' | b' ' | b'+' => Ok(Self(acc as $ty)),
-                    b'-' => Ok(Self(-(acc as $ty))),
-                    _ => Err(Error {
-                        _msg: "invalid digits (sign)",
-                        _payload: raw,
-                    }),
+                    b'0' | b' ' | b'+' => Some(Self(acc as $ty)),
+                    b'-' => Some(Self(-(acc as $ty))),
+                    _ => None,
                 }
             }
 
@@ -144,16 +122,12 @@ macro_rules! derive_signed {
 
         impl<const WIDTH: usize> Parsergen<WIDTH> for FixedTV<$ty, WIDTH> {
             #[inline]
-            fn des(raw: &[u8; WIDTH]) -> Result<Self> {
-                width_check::<WIDTH>(raw, "invalid width for FixedT")?;
+            fn des(raw: &[u8; WIDTH]) -> Option<Self> {
                 let acc: $ti = fold_digits_vec::<$ti>(&raw[1..])?;
                 match raw[0] {
-                    b'0' | b' ' | b'+' => Ok(Self(acc as $ty)),
-                    b'-' => Ok(Self(-(acc as $ty))),
-                    _ => Err(Error {
-                        _msg: "invalid digits (sign)",
-                        _payload: raw,
-                    }),
+                    b'0' | b' ' | b'+' => Some(Self(acc as $ty)),
+                    b'-' => Some(Self(-(acc as $ty))),
+                    _ => None,
                 }
             }
 

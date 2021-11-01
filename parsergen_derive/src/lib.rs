@@ -4,7 +4,11 @@ use std::iter::FromIterator;
 use syn::{parse::Parse, punctuated::Punctuated, spanned::Spanned, *};
 
 mod annotation;
+use crate::primitives::{parse_fixed_impl, ParseInput};
+
 use self::annotation::*;
+
+mod primitives;
 
 #[proc_macro_derive(Parsergen, attributes(parsergen))]
 pub fn derive_decode(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -12,6 +16,15 @@ pub fn derive_decode(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
         Ok(ok) => ok.into(),
         Err(err) => err.to_compile_error().into(),
     }
+}
+
+/// parse_fixed!(u32, 12[!])
+/// produces a fn(input: [u8; 12]) -> Option<u32>
+#[proc_macro]
+pub fn parse_fixed(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let x = parse_fixed_impl(parse_macro_input!(input as ParseInput)).into();
+    println!("{}", x);
+    x
 }
 
 fn derive_decode_impl(input: DecodeInput) -> Result<TokenStream> {
@@ -33,7 +46,7 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
         EnumVariant::UnitEnum(StructUnit { ty, literal, .. }) => {
             quote! {
                 if raw == &#literal {
-                    return Ok(Self::#ty)
+                    return Some(Self::#ty)
                 }
             }
         }
@@ -47,10 +60,10 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
                 ..
             } = &sf.fields[0];
             quote! {
-                let tmp: ::parsergen::Result<#fty> = (|slice|Ok(#parser))(raw);
+                let tmp: Option<#fty> = (|slice|Some(#parser))(raw);
                 match tmp {
-                    Err(_) => {},
-                    Ok(#name) => return Ok(Self::#ty #self_constr),
+                    None(_) => {},
+                    Some(#name) => return Some(Self::#ty #self_constr),
                 }
             }
         }
@@ -79,12 +92,9 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
 
         impl ::parsergen::Parsergen<{#width}> for #ty {
             #[inline(always)]
-            fn des<'a>(raw: &[u8; #width]) -> ::parsergen::Result<Self> {
-                if raw.len() != Self::WIDTH {
-                    return Err(::parsergen::Error{_msg: #mismatch, _payload: raw })
-                }
+            fn des<'a>(raw: &[u8; #width]) -> Option<Self> {
                 #(#checks)*
-                Err(::parsergen::Error{_msg: #mismatch, _payload: raw })
+                None
             }
 
             #[inline]
@@ -107,7 +117,6 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
 fn for_unit_struct(input: StructUnit) -> Result<TokenStream> {
     let StructUnit { ty, literal, .. } = &input;
     let width = input.literal.len();
-    let mismatch = "";
     let ty_str = ty.to_string();
     let r = quote! {
 
@@ -117,11 +126,11 @@ fn for_unit_struct(input: StructUnit) -> Result<TokenStream> {
 
         impl ::parsergen::Parsergen<{#width}> for #ty {
             #[inline(always)]
-            fn des<'a>(raw: &[u8; #width]) -> ::parsergen::Result<Self> {
+            fn des<'a>(raw: &[u8; #width]) -> Option<Self> {
                 if raw != & #literal {
-                    return Err(::parsergen::Error {_msg: #mismatch, _payload: raw})
+                    return None
                 }
-                Ok(Self)
+                Some(Self)
             }
 
             #[inline]
@@ -205,11 +214,11 @@ fn for_struct_with_fields(input: StructFields) -> Result<TokenStream> {
             }
 
             impl ::parsergen::Parsergen<{#width}> for #ty {
-                fn des(raw: &[u8; #width]) -> ::parsergen::Result<Self> {
+                fn des(raw: &[u8; #width]) -> Option<Self> {
                     const O_0: usize = 0;
                     #(#offsets)*
                     #(#parse_fields)*
-                    Ok(Self #self_constr)
+                    Some(Self #self_constr)
 
                 }
 
@@ -768,6 +777,16 @@ fn is_unsigned(ty: &Type) -> bool {
     }
 }
 
+fn parse_unsigned3(len: usize, ty: &Type) -> TokenStream {
+    let mismatch = quote! {::parsergen::Error{ _msg: "Not a valid number", _payload: raw } };
+    quote! {
+        match ::lexical_core::parse::<#ty>(slice) {
+            Ok(val) => val,
+            Err(_) => return None,
+        }
+    }
+}
+
 fn parse_unsigned2(len: usize, ty: &Type) -> TokenStream {
     let mismatch = quote! {::parsergen::Error{ _msg: "Not a valid number", _payload: raw } };
     quote! {
@@ -779,8 +798,6 @@ fn parse_unsigned2(len: usize, ty: &Type) -> TokenStream {
 }
 
 fn parse_unsigned(len: usize, ty: &Type) -> TokenStream {
-    let mismatch = quote! {||::parsergen::Error{ _msg: "Not a valid number", _payload: raw } };
-
     let f = |offset: &mut usize| {
         let rest = len - *offset;
         if rest >= 8 {
@@ -801,14 +818,39 @@ fn parse_unsigned(len: usize, ty: &Type) -> TokenStream {
             };
             *offset += 4;
             Some(s)
-        } else if rest >= 1 {
+        } else if rest == 3 {
             let s = quote! {
                 let a = ::arrayref::array_ref!(slice, #offset, #rest);
-                let v = ::parsergen::primitives::numbers::fold_digits::<#ty>(a)?;
+                let v = ::parsergen::primitives::numbers::parse_3(*a)?;
                 val += v as #ty;
             };
             *offset = len;
             Some(s)
+        } else if rest == 2 {
+            let s = quote! {
+                let a = ::arrayref::array_ref!(slice, #offset, #rest);
+                let v = ::parsergen::primitives::numbers::parse_2(*a)?;
+                val += v as #ty;
+            };
+            *offset = len;
+            Some(s)
+        } else if rest == 1 {
+            let s = quote! {
+                let a = ::arrayref::array_ref!(slice, #offset, #rest);
+                let v = ::parsergen::primitives::numbers::parse_1(*a)?;
+                val += v as #ty;
+            };
+            *offset = len;
+            Some(s)
+            /*
+            } else if rest >= 1 {
+                let s = quote! {
+                    let a = ::arrayref::array_ref!(slice, #offset, #rest);
+                    let v = ::parsergen::primitives::numbers::fold_digits::<#ty>(a)?;
+                    val += v as #ty;
+                };
+                *offset = len;
+                Some(s)*/
         } else {
             None
         }
@@ -821,7 +863,7 @@ fn parse_unsigned(len: usize, ty: &Type) -> TokenStream {
             let mut val = 0;
             #(#parsers)*;
             Some(val)
-        })().ok_or_else(#mismatch)?
+        })()?
     }
 }
 

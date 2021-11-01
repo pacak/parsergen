@@ -1,7 +1,4 @@
-use crate::{
-    primitives::{fold_digits, unfold_digits},
-    Error, Result,
-};
+use crate::primitives::{fold_digits, unfold_digits};
 
 const NS_IN_SEC: u64 = 1_000_000_000;
 
@@ -17,17 +14,14 @@ const NS_IN_SEC: u64 = 1_000_000_000;
 /// let r = read_time6(input).unwrap();
 /// assert_eq!(r, 1_000_000_000);
 /// ```
-pub fn read_time6(raw: &[u8]) -> Result<u64> {
+pub fn read_time6(raw: &[u8]) -> Option<u64> {
     if raw.len() != 6 {
-        return Err(Error {
-            _msg: "Invalid time6",
-            _payload: raw,
-        });
+        return None;
     }
     let h: u64 = fold_digits(&raw[0..2])?;
     let m: u64 = fold_digits(&raw[2..4])?;
     let s: u64 = fold_digits(&raw[4..6])?;
-    Ok(((h * 60 + m) * 60 + s) * NS_IN_SEC)
+    Some(((h * 60 + m) * 60 + s) * NS_IN_SEC)
 }
 
 /// Parse time in HHMMSSss format
@@ -42,16 +36,13 @@ pub fn read_time6(raw: &[u8]) -> Result<u64> {
 /// let r = read_time6(input).unwrap();
 /// assert_eq!(r, 1_000_000_000);
 /// ```
-pub fn read_time8(raw: &[u8]) -> Result<u64> {
+pub fn read_time8(raw: &[u8]) -> Option<u64> {
     if raw.len() != 8 {
-        return Err(Error {
-            _msg: "Invalid time8",
-            _payload: raw,
-        });
+        return None;
     }
     let t = read_time6(&raw[0..6])?;
     let f: u64 = fold_digits(&raw[6..8])?;
-    Ok(t + f * 100_000)
+    Some(t + f * 100_000)
 }
 
 /// Parse ASCII represented timestamp HHMMSSuuuuuu
@@ -61,7 +52,7 @@ pub fn read_time8(raw: &[u8]) -> Result<u64> {
 /// values re not ASCII digits.
 /// Timestamps composed of digits with invalid values for seconds (99) are accepted.
 #[cfg(target_feature = "sse2")]
-pub fn read_time12(raw: &[u8]) -> Result<u64> {
+pub fn read_time12(raw: &[u8]) -> Option<u64> {
     read_time12_vec(raw)
 }
 
@@ -72,7 +63,7 @@ pub fn read_time12(raw: &[u8]) -> Result<u64> {
 /// values re not ASCII digits.
 /// Timestamps composed of digits with invalid values for seconds (99) are accepted.
 #[cfg(not(target_feature = "sse2"))]
-pub fn read_time12(raw: &[u8]) -> Result<u64> {
+pub fn read_time12(raw: &[u8]) -> Option<u64> {
     read_time12_native(raw)
 }
 
@@ -174,31 +165,22 @@ fn read_write_time12() {
     assert_eq!(expected, &output);
 }
 
-pub fn read_time12_native(raw: &[u8]) -> Result<u64> {
+pub fn read_time12_native(raw: &[u8]) -> Option<u64> {
     if raw.len() != 12 {
-        return Err(Error {
-            _msg: "Invalid time12",
-            _payload: raw,
-        });
+        return None;
     }
     let t = read_time6(&raw[0..6])?;
     let f: u64 = fold_digits(&raw[6..12])?;
-    Ok(t + f * 1000)
+    Some(t + f * 1000)
 }
 
 #[cfg(target_feature = "sse2")]
-pub fn read_time12_vec(raw: &[u8]) -> Result<u64> {
+pub fn read_time12_vec(raw: &[u8]) -> Option<u64> {
     let mut digits = [0u8; 16];
     assert!(raw.len() == 12);
     digits[0..12].copy_from_slice(raw);
 
-    match read_time12v(digits) {
-        Some(x) => Ok(x),
-        None => Err(Error {
-            _msg: "Invalid time12",
-            _payload: raw,
-        }),
-    }
+    read_time12v(digits)
 }
 
 #[cfg(target_feature = "sse2")]

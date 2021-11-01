@@ -12,6 +12,8 @@ arrayref = "*"
 
 [dev-dependencies]
 criterion = { version = "0.3.5", features=["html_reports"] }
+fixed_width_num_ops = { path = "./fixed_width_num_ops" }
+iai = "*"
 
 [[bench]]
 name = "bench"
@@ -25,5 +27,11 @@ harness = false
 name = "numbers"
 harness = false
 
+
+[[bench]]
+name = "iai"
+harness = false
+
+
 [workspace]
-members = ["parsergen_derive", "parsergen_impl", "parsergen_tests"]
+members = ["parsergen_derive", "parsergen_impl", "parsergen_tests", "fixed_width_num_ops"]

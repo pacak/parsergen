@@ -1,5 +1,3 @@
-use crate::{Error, Result};
-
 pub mod numbers {
 
     #[inline(always)]
@@ -17,9 +15,23 @@ pub mod numbers {
         }
         Some(acc)
     }
+    #[inline(always)]
+    pub fn parse_3(d: [u8; 3]) -> Option<u32> {
+        parse_4([b'0', d[0], d[1], d[2]])
+    }
 
-    #[inline]
-    pub fn parse_2(digits: [u8; 2]) -> Option<u32> {
+    #[inline(always)]
+    pub fn parse_1(d: [u8; 1]) -> Option<u8> {
+        let v = d[0].wrapping_sub(b'0');
+        if v < 10 {
+            Some(v.into())
+        } else {
+            None
+        }
+    }
+
+    #[inline(always)]
+    pub fn parse_2(digits: [u8; 2]) -> Option<u16> {
         let v = u16::from_le_bytes(digits);
         const ADD: u16 = u16::from_le_bytes([b'F'; 2]);
         const SUB: u16 = u16::from_le_bytes([b'0'; 2]);
@@ -28,7 +40,7 @@ pub mod numbers {
         let mut v = v.wrapping_sub(SUB);
         if (a | v) & MASK == 0 {
             v = (v * 10) + (v >> 8);
-            Some(v as u32)
+            Some(v)
         } else {
             None
         }
@@ -83,7 +95,7 @@ pub mod numbers {
 }
 
 #[inline(always)]
-pub fn fold_digits<T>(digits: &[u8]) -> Result<T>
+pub fn fold_digits<T>(digits: &[u8]) -> Option<T>
 where
     T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8>,
 {
@@ -91,14 +103,11 @@ where
     for d in digits.iter() {
         let d = d.overflowing_sub(b'0').0;
         if d >= 10 {
-            return Err(Error {
-                _msg: "invalid digits",
-                _payload: digits,
-            });
+            return None;
         }
         acc = acc * 10.into() + d.into();
     }
-    Ok(acc)
+    Some(acc)
 }
 
 unsafe fn pp(s: &'static str, val: std::arch::x86_64::__m128i) {
@@ -193,25 +202,6 @@ pub fn parse_16d(digits: [u8; 16]) -> Option<u64> {
     Some(u64::from(lo) * 10_000_000 + u64::from(hi))
 }
 
-#[test]
-fn asdf() {
-    panic!("{:?}", parse_4c(*b"1234"));
-}
-
-#[test]
-fn asdf1() {
-    panic!(
-        "8b: {:?}, 8c: {:?}",
-        parse_8c(*b"12345678"),
-        parse_8d(*b"12345678")
-    );
-}
-
-#[test]
-fn asdf3() {
-    panic!("{:?}", parse_16c(*b"1234567812345678"));
-}
-
 #[inline(always)]
 pub fn read_decimal(raw: [u8; 16]) -> (i32, [u64; 2]) {
     unsafe {
@@ -264,7 +254,7 @@ fn test_decimal_mask() {
 
 #[inline(always)]
 #[cfg(target_feature = "sse2")]
-pub fn fold_digits_vec<T>(digits: &[u8]) -> Result<T>
+pub fn fold_digits_vec<T>(digits: &[u8]) -> Option<T>
 where
     T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8>,
 {
@@ -275,17 +265,14 @@ where
         mask[..width].copy_from_slice(chunk);
         let masked = decimal_mask(mask);
         if masked != (1 << width) - 1 {
-            return Err(Error {
-                _msg: "invalid digits",
-                _payload: digits,
-            });
+            return None;
         }
     }
     for d in digits.iter() {
         let d = d.overflowing_sub(b'0').0;
         acc = acc * 10.into() + d.into();
     }
-    Ok(acc)
+    Some(acc)
 }
 
 #[cfg(not(target_feature = "sse2"))]
@@ -314,33 +301,27 @@ where
     }
 }
 
-pub fn fold_signed<T>(digits: &[u8]) -> Result<T>
+pub fn fold_signed<T>(digits: &[u8]) -> Option<T>
 where
     T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8> + std::ops::Neg<Output = T>,
 {
     let r = fold_digits(&digits[1..])?;
     match digits[0] as char {
-        '0' | ' ' | '+' => Ok(r),
-        '-' => Ok(-r),
-        _ => Err(Error {
-            _msg: "invalid digits (sign)",
-            _payload: digits,
-        }),
+        '0' | ' ' | '+' => Some(r),
+        '-' => Some(-r),
+        _ => None,
     }
 }
 
-pub fn fold_signed_vec<T, const WIDTH: usize>(digits: &[u8]) -> Result<T>
+pub fn fold_signed_vec<T, const WIDTH: usize>(digits: &[u8]) -> Option<T>
 where
     T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8> + std::ops::Neg<Output = T>,
 {
     let r = fold_digits_vec::<T>(&digits[1..])?;
     match digits[0] as char {
-        '0' | ' ' | '+' => Ok(r),
-        '-' => Ok(-r),
-        _ => Err(Error {
-            _msg: "invalid digits (sign)",
-            _payload: digits,
-        }),
+        '0' | ' ' | '+' => Some(r),
+        '-' => Some(-r),
+        _ => None,
     }
 }
 
