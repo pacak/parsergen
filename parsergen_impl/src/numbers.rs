@@ -1,3 +1,7 @@
+//! numeric parsing primitives
+//!
+//! At the moment only serialization bits are used
+
 use crate::primitives::*;
 use crate::*;
 
@@ -27,22 +31,6 @@ impl<T, const WIDTH: usize> FixedTV<T, WIDTH> {
     }
 }
 
-pub fn des_fixed_array<T, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
-    raw: &[u8; WIDTH],
-) -> Option<[T; CNT]>
-where
-    FixedT<T, FWIDTH>: Parsergen<FWIDTH>,
-    T: Default + Copy,
-{
-    assert_eq!(WIDTH, FWIDTH * CNT);
-    let mut res = [T::default(); CNT];
-    for (ix, chunk) in raw.chunks(FWIDTH).enumerate() {
-        let buf = <[u8; FWIDTH]>::try_from(chunk).unwrap();
-        res[ix] = FixedT::<T, FWIDTH>::des(&buf)?.0;
-    }
-    Some(res)
-}
-
 pub fn ser_fixed_array<T, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
     arr: [T; CNT],
     raw: &mut [u8; WIDTH],
@@ -55,22 +43,6 @@ pub fn ser_fixed_array<T, const WIDTH: usize, const FWIDTH: usize, const CNT: us
         let buf = <&mut [u8; FWIDTH]>::try_from(chunk).unwrap();
         FixedT::new(arr[ix]).ser(buf)
     }
-}
-
-pub fn des_fixed_array_vec<T, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
-    raw: &[u8; WIDTH],
-) -> Option<[T; CNT]>
-where
-    T: Default + Copy,
-    FixedTV<T, FWIDTH>: Parsergen<FWIDTH>,
-{
-    assert_eq!(WIDTH, FWIDTH * CNT);
-    let mut res = [T::default(); CNT];
-    for (ix, chunk) in raw.chunks(FWIDTH).enumerate() {
-        let buf = <[u8; FWIDTH]>::try_from(chunk).unwrap();
-        res[ix] = FixedTV::<T, FWIDTH>::des(&buf)?.0;
-    }
-    Some(res)
 }
 
 macro_rules! derive_unsigned {
@@ -104,7 +76,6 @@ macro_rules! derive_signed {
         impl<const WIDTH: usize> Parsergen<WIDTH> for FixedT<$ty, WIDTH> {
             #[inline(always)]
             fn des(raw: &[u8; WIDTH]) -> Option<Self> {
-                width_check::<WIDTH>(raw, "invalid width for FixedT")?;
                 let acc: $ti = fold_digits(&raw[1..])?;
                 match raw[0] {
                     b'0' | b' ' | b'+' => Some(Self(acc as $ty)),

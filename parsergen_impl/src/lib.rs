@@ -84,15 +84,6 @@ impl<'a, const N: usize> PrettyArrBytes<'a, N> {
     }
 }
 
-#[inline(always)]
-pub fn width_check<'a, const WIDTH: usize>(_payload: &'a [u8], _msg: &'static str) -> Option<()> {
-    if _payload.len() == WIDTH {
-        Some(())
-    } else {
-        None
-    }
-}
-
 impl<const N: usize> std::fmt::Debug for PrettyArrBytes<'_, N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list()
@@ -115,34 +106,6 @@ impl<Ty, Iso, const CNT: usize> From<[Ty; CNT]> for FixedArr<Ty, Iso, CNT> {
         FixedArr(arr, PhantomData)
     }
 }
-/*
-impl<Ty, Iso, const WIDTH: usize, const FWIDTH: usize, const CNT: usize> Parsergen<WIDTH>
-    for FixedArr<Ty, Iso, CNT>
-where
-    Iso: Parsergen<FWIDTH> + Into<Ty>,
-    Ty: Default + Copy + Into<Iso>,
-    Self: Sized,
-{
-    fn des(raw: &[u8; WIDTH]) -> Result<Self> {
-        let mut res = [Ty::default(); CNT];
-        for (ix, raw) in raw.chunks(FWIDTH).enumerate() {
-            res[ix] = <Iso as Parsergen>::des(raw)?.into();
-        }
-        Ok(Self(res, PhantomData::default()))
-    }
-
-    fn ser(&self, raw: &mut [u8; WIDTH]) {
-        for (&ty, raw_c) in self.0.iter().zip(raw.chunks_mut(FWIDTH)) {
-            ty.into().ser(raw_c);
-        }
-    }
-
-    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_list()
-            .entries(raw.chunks(FWIDTH).map(<Sliced<Iso>>::from))
-            .finish()
-    }
-}*/
 
 pub struct Sliced<'a, T, const WIDTH: usize>(&'a [u8; WIDTH], PhantomData<T>);
 
@@ -278,7 +241,6 @@ where
 
     Some(res)
 }
-//                quote!(<::parsergen::des_iso_array::<#elem, #iso, {#width * #len}, {#width}, #len>(slice)?)
 
 pub fn ser_array<
     T: Parsergen<FWIDTH> + Default + Copy,
@@ -310,59 +272,6 @@ pub fn ser_iso_array<T, Iso, const WIDTH: usize, const FWIDTH: usize, const CNT:
         Iso::from(arr[ix]).ser(buf)
     }
 }
-
-/*
-impl<T, const FWIDTH: usize, const WIDTH: usize, const CNT: usize> Parsergen<WIDTH> for [T; CNT]
-where
-    T: Parsergen<FWIDTH> + Default + Copy,
-{
-    fn des(raw: &[u8; WIDTH]) -> Result<Self> {
-        let mut res = [T::default(); CNT];
-        for (ix, raw) in raw.chunks(FWIDTH).enumerate() {
-            res[ix] = T::des(raw)?;
-        }
-        Ok(res)
-    }
-
-    fn ser(&self, raw: &mut [u8; WIDTH]) {
-        for (&ty, raw_c) in self.iter().zip(raw.chunks_mut(FWIDTH)) {
-            ty.ser(raw_c);
-        }
-    }
-
-    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_list()
-            .entries(raw.chunks(FWIDTH).map(<Sliced<T>>::from))
-            .finish()
-    }
-}*/
-
-impl<const WIDTH: usize> HasWidth for [u8; WIDTH] {
-    const WIDTH: usize = WIDTH;
-}
-impl<const WIDTH: usize> Parsergen<WIDTH> for [u8; WIDTH] {
-    fn des(raw: &[u8; WIDTH]) -> Option<Self> {
-        Some(*raw)
-    }
-
-    fn ser(&self, raw: &mut [u8; WIDTH]) {
-        *raw = *self;
-    }
-
-    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", PrettyBytes(raw))
-    }
-}
-/*
-pub fn encode<T: Parsergen>(val: &T) -> Vec<u8> {
-    let mut res = vec![0; T::WIDTH];
-    val.ser(&mut res);
-    res
-}
-
-pub fn decode<T: Parsergen>(raw: &[u8]) -> Option<T> {
-    T::des(raw).ok()
-}*/
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 /// Given amount in cents will render it as CNT wide field:
