@@ -10,14 +10,14 @@ macro_rules! read {
                 b.iter(|| time::$fn_r(black_box(input)).unwrap())
             });
         }
-
+        /*
         fn $fn_w(c: &mut Criterion) {
             let mut input = *$payload;
             let val = time::$fn_r(&input).unwrap();
             c.bench_function(stringify!($fn_w), |b| {
                 b.iter(|| time::$fn_w(black_box(val), &mut input))
             });
-        }
+        }*/
     };
 }
 
@@ -30,8 +30,8 @@ criterion_group!(
     read_time6,
     read_time8,
     read_time12,
-    write_time6,
-    write_time8,
-    write_time12,
+    //    write_time6,
+    //    write_time8,
+    //    write_time12,
 );
 criterion_main!(time);
