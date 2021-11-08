@@ -2,13 +2,14 @@
 name = "parsergen"
 version = "0.1.0"
 edition = "2021"
+autotests = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-parsergen_derive = { path = "./parsergen_derive" }
-parsergen_impl = { path = "./parsergen_impl" }
 arrayref = "*"
+luhn3 = { version = "1.0.2" }
+parsergen_derive = { path = "./parsergen_derive" }
 
 [dev-dependencies]
 criterion = { version = "0.3.5", features=["html_reports"] }
@@ -31,5 +32,17 @@ name = "iai"
 harness = false
 
 
+
+[[test]]
+name ="simple"
+
+[[test]]
+name = "iso_array"
+
+[[test]]
+name = "tests"
+
+
+
 [workspace]
-members = ["parsergen_derive", "parsergen_impl", "parsergen_tests"]
+members = [".", "parsergen_derive"]

@@ -54,7 +54,7 @@ fn test_read_time6() {
 /// # Examples
 /// ```rust
 /// use parsergen::time::*;
-/// let input = b"00000100";
+/// let input = b"000001";
 /// let r = read_time6(input).unwrap();
 /// assert_eq!(r, 1_000_000_000);
 /// ```
@@ -172,7 +172,7 @@ pub fn write_time6(time: u64, res: &mut [u8]) {
 pub fn write_time8(time: u64, res: &mut [u8]) {
     assert!(res.len() == 8);
     let seconds = time / NS_IN_SEC;
-    let n = time % NS_IN_SEC / 100_000;
+    let n = time % NS_IN_SEC * 100 / NS_IN_SEC;
     let h = seconds / 3600;
     let m = (seconds / 60) % 60;
     let s = seconds % 60;
@@ -214,7 +214,7 @@ fn read_write_time8() {
     let expected = b"12345612";
     let t = read_time8(expected).unwrap();
     assert_eq!(12 * 3600 + 34 * 60 + 56, t / NS_IN_SEC);
-    assert_eq!(1_200_000, t % NS_IN_SEC);
+    assert_eq!(12 * NS_IN_SEC / 100, t % NS_IN_SEC);
     write_time8(t, &mut output);
     assert_eq!(expected, &output);
 }
@@ -234,7 +234,7 @@ fn read_write_time12() {
     let expected = b"123456000000";
     let t = read_time12(expected).unwrap();
     assert_eq!(12 * 3600 + 34 * 60 + 56, t / NS_IN_SEC);
-    assert_eq!(123456000, t % NS_IN_SEC);
+    assert_eq!(0, t % NS_IN_SEC);
     write_time12(t, &mut output);
     assert_eq!(expected, &output);
 }

@@ -30,50 +30,17 @@ struct X0s {
     b: X0,
 }
 
-//#[derive(Eq, PartialEq, Parsergen, Debug)]
+#[derive(Eq, PartialEq, Parsergen, Debug)]
 struct X0a {
     val: [X0; 2],
 }
 
-impl ::parsergen::HasWidth for X0a {
-    const WIDTH: usize = <X0 as ::parsergen::HasWidth>::WIDTH * 2;
-}
-impl ::parsergen::Parsergen<{ <X0 as ::parsergen::HasWidth>::WIDTH * 2 }> for X0a {
-    fn des(raw: &[u8; <X0 as ::parsergen::HasWidth>::WIDTH * 2]) -> Option<Self> {
-        const O_0: usize = 0;
-        const O_1: usize = 0 + <X0 as ::parsergen::HasWidth>::WIDTH * 2;
-        let slice = ::arrayref::array_ref!(raw, O_0, O_1 - O_0);
-        let val = ::parsergen::des_array::<
-            X0,
-            { <X0 as ::parsergen::HasWidth>::WIDTH * 2 },
-            { <X0 as ::parsergen::HasWidth>::WIDTH },
-            2,
-        >(slice)?;
-        Some(Self { val })
-    }
-    fn ser(&self, raw: &mut [u8; <X0 as ::parsergen::HasWidth>::WIDTH * 2]) {
-        const O_0: usize = 0;
-        let Self { val } = self;
-        const O_1: usize = 0 + <X0 as ::parsergen::HasWidth>::WIDTH * 2;
-        let var = val;
-        let slice = ::arrayref::array_mut_ref!(raw, O_0, O_1 - O_0);
-        ::parsergen::ser_array::<
-            X0,
-            { <X0 as ::parsergen::HasWidth>::WIDTH * 2 },
-            { <X0 as ::parsergen::HasWidth>::WIDTH },
-            2,
-        >(*var, slice);
-    }
-    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        const O_0: usize = 0;
-        const O_1: usize = 0 + <X0 as ::parsergen::HasWidth>::WIDTH * 2;
-        let mut d = f.debug_struct("X0a");
-        d.field(
-            "val",
-            &(|slice| {
-                ::parsergen::slice_arr::<X0, { <X0 as ::parsergen::HasWidth>::WIDTH }>(slice, f)
-            })(&raw[O_0..O_1]),
-        );
-        d.finish()
-    }
+#[test]
+fn x0a() {
+    roundtrip(
+        b"12345678",
+        X0a {
+            val: [X0 { val: 1234 }, X0 { val: 5678 }],
+        },
+    );
 }

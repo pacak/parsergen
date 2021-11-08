@@ -23,7 +23,7 @@ pub fn derive_decode(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 #[proc_macro]
 pub fn parse_fixed(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let x = parse_fixed_impl(parse_macro_input!(input as ParseInput)).into();
-    //    println!("{}", x);
+    // println!("{}", x);
     x
 }
 
@@ -33,7 +33,7 @@ fn derive_decode_impl(input: DecodeInput) -> Result<TokenStream> {
         DecodeInput::Struct(StructInput::Unit(x)) => for_unit_struct(x),
         DecodeInput::Enum(x) => for_enum(x),
     }?;
-    println!("{}", r);
+    //println!("{}", r);
     Ok(r)
 }
 
@@ -578,21 +578,16 @@ impl SField {
             (FieldKind::Iso(ty), None) => {
                 quote!(::parsergen::Sliced::<#ty, {#width}>::from)
             }
-            (FieldKind::Iso(ity), Some(TypeArray { len, .. })) => {
-                // BROKEN
-                //quote!(::parsergen::Sliced::<[#ty; #len], {#width}>::from)
+            (FieldKind::Iso(ity), Some(TypeArray { .. })) => {
                 let fwidth = quote!(<#ity as ::parsergen::HasWidth>::WIDTH);
-                quote!((|slice|::parsergen::slice_arr::<#ity, #fwidth>(slice, f)))
-
-                //quote!(todo!("interited arr"))
+                quote!((|slice|::parsergen::SlicedArr::<#ity, {#fwidth}>::from(slice)))
             }
             (FieldKind::Inherited, None) => {
                 quote!(::parsergen::Sliced::<#ty, {#width}>::from)
             }
             (FieldKind::Inherited, Some(TypeArray { elem, .. })) => {
                 let fwidth = quote!(<#elem as ::parsergen::HasWidth>::WIDTH);
-                quote!((|slice|::parsergen::slice_arr::<#elem, #fwidth>(slice, f)))
-                //                quote!(::parsergen::Sliced::<[#ty; #len], {#width}>::from)
+                quote!((|slice|::parsergen::SlicedArr::<#elem, {#fwidth}>::from(slice)))
             }
         };
         Ok(Self {

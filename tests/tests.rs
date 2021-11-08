@@ -12,37 +12,11 @@ where
     assert_eq!(&buf, raw, "while testing encoder");
     assert_eq!(parsed, T::des(raw).unwrap(), "while testing decoder");
 }
-/*
+
 #[derive(Eq, PartialEq, Debug, Copy, Clone, Default, Parsergen)]
 struct X0 {
     #[parsergen(decimal: 4)]
     val: u32,
-}
-
-#[test]
-fn x0() {
-    roundtrip(b"1234", X0 { val: 1234 })
-}
-
-#[derive(Eq, PartialEq, Debug, Copy, Clone, Default, Parsergen)]
-struct X0s {
-    a: X0,
-    b: X0,
-}
-
-#[derive(Eq, PartialEq, Parsergen, Debug)]
-struct X0a {
-    val: [X0; 2],
-}
-
-#[test]
-fn x0a() {
-    roundtrip(
-        b"12345678",
-        X0a {
-            val: [X0 { val: 1234 }, X0 { val: 5678 }],
-        },
-    );
 }
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
@@ -51,22 +25,6 @@ struct X1(#[parsergen(decimal: 4)] u32);
 #[test]
 fn x1() {
     roundtrip(b"0123", X1(123));
-}
-
-#[derive(Eq, PartialEq, Debug, Parsergen)]
-struct X2 {
-    #[parsergen(decimal: 3)]
-    val: [u32; 3],
-}
-
-#[test]
-fn x2() {
-    roundtrip(
-        b"123456789",
-        X2 {
-            val: [123, 456, 789],
-        },
-    );
 }
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
@@ -113,100 +71,6 @@ struct X7(#[parsergen(hex: "010203")] ());
 #[test]
 fn x7() {
     roundtrip(&[1, 2, 3], X7(()));
-}
-*/
-#[derive(Eq, PartialEq, Parsergen, Debug, Copy, Clone, Default)]
-#[parsergen(literal: "he")]
-/// doc
-struct X8;
-
-#[test]
-fn x8() {
-    roundtrip(b"he", X8);
-}
-/*
-#[derive(Eq, PartialEq, Parsergen, Debug)]
-#[parsergen(literal: "hi")]
-/// doc
-struct X8a;
-
-impl From<X8> for () {
-    fn from(_: X8) -> Self {
-        ()
-    }
-}
-impl From<()> for X8 {
-    fn from(_: ()) -> Self {
-        X8
-    }
-}
-*/
-#[derive(Eq, PartialEq, Debug, Parsergen)]
-struct X9 {
-    #[parsergen(via: X8)]
-    var: [(); 2],
-}
-
-/*
-fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    const O_0: usize = 0;
-    const O_1: usize = 0 + <X8 as ::parsergen::HasWidth>::WIDTH * 2;
-    let mut d = f.debug_struct("X9");
-    d.field(
-        "var",
-        &slice_arr::<X8, 2>(&raw[O_0..O_1], f), //        &::parsergen::Sliced::<[X8; 2], 4>::from(&raw[O_0..O_1]),
-    );
-    d.finish()
-}
-
-fn slice_arr<T: Parsergen<W>, const W: usize>(
-    raw: &[u8],
-    f: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
-    let mut d = f.debug_list();
-    d.entries(raw.chunks(W).map(|c| slice(c, f)));
-    d.finish()
-}
-*/
-#[test]
-fn x9() {
-    roundtrip(b"hehe", X9 { var: [(), ()] });
-}
-/*
-#[derive(Eq, PartialEq, Debug, Parsergen)]
-enum X10 {
-    #[parsergen(literal: "lo")]
-    F1,
-    F2(X8),
-    F3 {
-        x8a: X8a,
-    },
-}
-
-#[test]
-fn x10() {
-    roundtrip(b"lo", X10::F1);
-    roundtrip(b"he", X10::F2(X8));
-    roundtrip(b"hi", X10::F3 { x8a: X8a });
-}
-
-#[derive(Eq, PartialEq, Debug, Parsergen)]
-struct X11 {
-    x2: X2,
-    x10: X10,
-}
-
-#[test]
-fn x11() {
-    let x11 = X11 {
-        x2: X2 {
-            val: [123, 456, 789],
-        },
-        x10: X10::F1,
-    };
-
-    let msg = b"123456789lo";
-    roundtrip(msg, x11);
 }
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
@@ -344,4 +208,4 @@ struct X17(Blob<4>);
 #[test]
 fn x17() {
     roundtrip(b"1234", X17(Blob(*b"1234")));
-}*/
+}
