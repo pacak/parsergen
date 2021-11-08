@@ -7,6 +7,14 @@ pub mod time;
 pub mod numbers;
 pub use numbers::*;
 
+extern crate self as parsergen;
+
+use parsergen_derive::*;
+#[derive(Parsergen)]
+struct Foo {
+    foo: u32,
+}
+
 #[derive(Debug)]
 pub struct Error<'a> {
     pub _msg: &'static str,
@@ -107,13 +115,38 @@ impl<Ty, Iso, const CNT: usize> From<[Ty; CNT]> for FixedArr<Ty, Iso, CNT> {
     }
 }
 
-pub struct Sliced<'a, T, const WIDTH: usize>(&'a [u8; WIDTH], PhantomData<T>);
+pub struct Sliced<'a, T, const WIDTH: usize>(&'a [u8], PhantomData<T>);
 
-impl<'a, T, const WIDTH: usize> From<&'a [u8; WIDTH]> for Sliced<'a, T, WIDTH> {
-    fn from(val: &'a [u8; WIDTH]) -> Self {
+impl<'a, T, const WIDTH: usize> From<&'a [u8]> for Sliced<'a, T, WIDTH> {
+    fn from(val: &'a [u8]) -> Self {
         Self(val, PhantomData)
     }
 }
+/*
+impl<T, const FWIDTH: usize, const WIDTH: usize, const CNT: usize> Parsergen<WIDTH> for [T; CNT]
+where
+    T: Parsergen<FWIDTH> + Default + Copy,
+{
+    fn des(raw: &[u8; WIDTH]) -> Option<Self> {
+        let mut res = [T::default(); CNT];
+        for (ix, raw) in raw.chunks(FWIDTH).enumerate() {
+            res[ix] = T::des(raw)?;
+        }
+        Ok(res)
+    }
+
+    fn ser(&self, raw: &mut [u8; WIDTH]) {
+        for (&ty, raw_c) in self.iter().zip(raw.chunks_mut(FWIDTH)) {
+            ty.ser(raw_c);
+        }
+    }
+
+    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list()
+            .entries(raw.chunks(FWIDTH).map(<Sliced<T>>::from))
+            .finish()
+    }
+}*/
 
 impl<T: Parsergen<WIDTH>, const WIDTH: usize> std::fmt::Debug for Sliced<'_, T, WIDTH> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -343,4 +376,13 @@ impl Parsergen<12> for primitives::ISIN {
     fn ser(&self, raw: &mut [u8; 12]) {
         *raw = primitives::unfold_isin(*self);
     }
+}
+
+pub fn slice_arr<T: Parsergen<W>, const W: usize>(
+    raw: &[u8],
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    let mut d = f.debug_list();
+    d.entries(raw.chunks(W).map(|c| Sliced::<T, W>::from(c)));
+    d.finish()
 }

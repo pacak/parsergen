@@ -33,14 +33,13 @@ fn derive_decode_impl(input: DecodeInput) -> Result<TokenStream> {
         DecodeInput::Struct(StructInput::Unit(x)) => for_unit_struct(x),
         DecodeInput::Enum(x) => for_enum(x),
     }?;
-    //    println!("{}", r);
+    println!("{}", r);
     Ok(r)
 }
 
 fn for_enum(input: EnumInput) -> Result<TokenStream> {
     let EnumInput { ty, width, .. } = &input;
     let ty_str = ty.to_string();
-    let mismatch = format!("Invalid {}", ty);
 
     let checks = input.variants.iter().map(|f| match f {
         EnumVariant::UnitEnum(StructUnit { ty, literal, .. }) => {
@@ -209,35 +208,35 @@ fn for_struct_with_fields(input: StructFields) -> Result<TokenStream> {
     let self_constr = input.self_constr();
     let r = quote! {
 
-            impl ::parsergen::HasWidth for #ty {
-                const WIDTH: usize = #width;
+        impl ::parsergen::HasWidth for #ty {
+            const WIDTH: usize = #width;
+        }
+
+        impl ::parsergen::Parsergen<{#width}> for #ty {
+            fn des(raw: &[u8; #width]) -> Option<Self> {
+                const O_0: usize = 0;
+                #(#offsets)*
+                #(#parse_fields)*
+                Some(Self #self_constr)
+
             }
 
-            impl ::parsergen::Parsergen<{#width}> for #ty {
-                fn des(raw: &[u8; #width]) -> Option<Self> {
-                    const O_0: usize = 0;
-                    #(#offsets)*
-                    #(#parse_fields)*
-                    Some(Self #self_constr)
-
-                }
-
-                fn ser(&self, raw: &mut [u8; #width]) {
-                    const O_0: usize = 0;
-                    let Self #self_constr = self;
-                    #(#offsets)*
-                    #(#encode_fields)*
-                }
-    /*
-                fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    const O_0: usize = 0;
-                    #(#offsets)*
-                    let mut d = #make_slicer;
-                    #(#slice_fields)*
-                    d.finish()
-                }*/
+            fn ser(&self, raw: &mut [u8; #width]) {
+                const O_0: usize = 0;
+                let Self #self_constr = self;
+                #(#offsets)*
+                #(#encode_fields)*
             }
-        };
+
+            fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                const O_0: usize = 0;
+                #(#offsets)*
+                let mut d = #make_slicer;
+                #(#slice_fields)*
+                d.finish()
+            }
+        }
+    };
     Ok(r)
 }
 
@@ -548,13 +547,10 @@ impl SField {
             }
             (FieldKind::Literal(_), Some(_)) => unreachable!(),
             (FieldKind::Fixed(width), None) => {
-                //                quote!(todo!())
                 quote!(<::parsergen::FixedT::<#ty, #width>>::new(*var).ser(slice))
             }
             (FieldKind::Fixed(width), Some(TypeArray { len, elem, .. })) => {
                 quote!(::parsergen::ser_fixed_array::<#elem, {#width * #len}, {#width}, #len>(*var, slice))
-                //                quote!(todo!("fixed arr"))
-                //                quote!(<::parsergen::FixedArrT::<#elem, #width, #len>>::new(*var).ser(slice))
             }
             (FieldKind::Iso(iso), None) => {
                 quote!(<#iso>::from(*var).ser(slice))
@@ -562,8 +558,6 @@ impl SField {
             (FieldKind::Iso(iso), Some(TypeArray { len, elem, .. })) => {
                 let fwidth = quote!(<#iso as ::parsergen::HasWidth>::WIDTH);
                 quote!(::parsergen::ser_iso_array::<#elem, #iso, {#fwidth * #len}, {#fwidth}, #len>(*var, slice))
-                //                quote!(todo!("iso arr"))
-                //                quote!(<::parsergen::FixedArr<#elem, #iso, #len>>::from(*var).ser(slice))
             }
             (FieldKind::Inherited, None) => {
                 quote!(<#ty as ::parsergen::Parsergen<{#width}>>::ser(var, slice))
@@ -571,7 +565,6 @@ impl SField {
             (FieldKind::Inherited, Some(TypeArray { len, elem, .. })) => {
                 let fwidth = quote!(<#elem as ::parsergen::HasWidth>::WIDTH);
                 quote!(::parsergen::ser_array::<#elem, {#fwidth * #len}, {#fwidth}, #len>(*var, slice))
-                //                quote!(todo!("inherited arr"))
             }
         };
 
@@ -583,16 +576,23 @@ impl SField {
                 quote!(::parsergen::PrettyArrBytes::<#len>::new)
             }
             (FieldKind::Iso(ty), None) => {
-                quote!(::parsergen::Sliced::<#ty>::from)
+                quote!(::parsergen::Sliced::<#ty, {#width}>::from)
             }
-            (FieldKind::Iso(ty), Some(TypeArray { len, .. })) => {
-                quote!(::parsergen::Sliced::<[#ty; #len]>::from)
+            (FieldKind::Iso(ity), Some(TypeArray { len, .. })) => {
+                // BROKEN
+                //quote!(::parsergen::Sliced::<[#ty; #len], {#width}>::from)
+                let fwidth = quote!(<#ity as ::parsergen::HasWidth>::WIDTH);
+                quote!((|slice|::parsergen::slice_arr::<#ity, #fwidth>(slice, f)))
+
+                //quote!(todo!("interited arr"))
             }
             (FieldKind::Inherited, None) => {
-                quote!(::parsergen::Sliced::<#ty>::from)
+                quote!(::parsergen::Sliced::<#ty, {#width}>::from)
             }
-            (FieldKind::Inherited, Some(TypeArray { len, .. })) => {
-                quote!(todo!("interited arr"))
+            (FieldKind::Inherited, Some(TypeArray { elem, .. })) => {
+                let fwidth = quote!(<#elem as ::parsergen::HasWidth>::WIDTH);
+                quote!((|slice|::parsergen::slice_arr::<#elem, #fwidth>(slice, f)))
+                //                quote!(::parsergen::Sliced::<[#ty; #len], {#width}>::from)
             }
         };
         Ok(Self {
