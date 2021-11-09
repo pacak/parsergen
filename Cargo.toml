@@ -19,17 +19,17 @@ iai = "*"
 name = "bench"
 harness = false
 
-[[bench]]
-name = "time"
-harness = false
+#[[bench]]
+#name = "time"
+#harness = false
 
-[[bench]]
-name = "parse_fixed"
-harness = false
+#[[bench]]
+#name = "parse_fixed"
+#harness = false
 
-[[bench]]
-name = "iai"
-harness = false
+#[[bench]]
+#name = "iai"
+#harness = false
 
 
 
@@ -38,6 +38,9 @@ name ="simple"
 
 [[test]]
 name = "iso_array"
+
+[[test]]
+name = "simple2"
 
 [[test]]
 name = "tests"

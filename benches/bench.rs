@@ -61,8 +61,8 @@ impl HasWidth for Isin {
 }
 
 impl Parsergen<12> for Isin {
-    fn des(raw: &[u8; 12]) -> Option<Self> {
-        Some(Isin(fold_isin(*raw).unwrap().0))
+    fn des(raw: &[u8; 12]) -> Result<Self, Error> {
+        Ok(Isin(fold_isin(*raw).unwrap().0))
     }
 
     fn ser(&self, raw: &mut [u8; 12]) {
@@ -146,8 +146,8 @@ impl HasWidth for Time12 {
 }
 
 impl Parsergen<12> for Time12 {
-    fn des<'a>(raw: &'a [u8; 12]) -> Option<Self> {
-        Some(Time12(read_time12(raw)?))
+    fn des<'a>(raw: &'a [u8; 12]) -> Result<Self, Error> {
+        Ok(Time12(read_time12(raw).unwrap()))
     }
 
     fn ser(&self, res: &mut [u8; 12]) {

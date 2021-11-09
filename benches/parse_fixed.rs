@@ -60,7 +60,7 @@ fn unsigned_decimals(c: &mut Criterion) {
             });
         })+};
     }
-
+    /*
     check!(u8, 1, 3);
 
     check!(u16, 1, 3, 5);
@@ -71,7 +71,7 @@ fn unsigned_decimals(c: &mut Criterion) {
 
     check!(usize, 1, 3, 5, 8, 12, 16, 19);
 
-    check!(u128, 1, 3, 5, 8, 12, 16, 19, 24, 26, 32, 36);
+    check!(u128, 1, 3, 5, 8, 12, 16, 19, 24, 26, 32, 36);*/
 }
 
 fn signed_decimals(c: &mut Criterion) {
@@ -102,7 +102,7 @@ fn signed_decimals(c: &mut Criterion) {
             });
         })+};
     }
-
+    /*
     check!(i8, 2, 4);
 
     check!(i16, 2, 4, 6);
@@ -113,7 +113,7 @@ fn signed_decimals(c: &mut Criterion) {
 
     check!(isize, 2, 4, 6, 9, 13, 17, 20);
 
-    check!(i128, 2, 4, 6, 9, 13, 16, 20, 25, 27, 33, 37);
+    check!(i128, 2, 4, 6, 9, 13, 16, 20, 25, 27, 33, 37);*/
 }
 
 criterion_group! {

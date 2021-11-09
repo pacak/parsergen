@@ -9,16 +9,10 @@ pub use numbers::*;
 use crate::primitives::*;
 pub use parsergen_derive::*;
 
-#[derive(Parsergen)]
-struct Foo {
-    #[parsergen(decimal: 32)]
-    foo: u32,
-}
-
 #[derive(Debug)]
 pub struct Error<'a> {
-    pub _msg: &'static str,
-    pub _payload: &'a [u8],
+    pub message: &'static str,
+    pub payload: &'a [u8],
 }
 
 impl std::fmt::Display for Error<'_> {
@@ -26,8 +20,8 @@ impl std::fmt::Display for Error<'_> {
         write!(
             f,
             "Parse error: {}, payload: {:?}",
-            self._msg,
-            PrettyBytes(self._payload)
+            self.message,
+            PrettyBytes(self.payload)
         )
     }
 }
@@ -42,7 +36,7 @@ pub trait Parsergen<const W: usize>
 where
     Self: HasWidth,
 {
-    fn des(raw: &[u8; W]) -> Option<Self>
+    fn des(raw: &[u8; W]) -> Result<Self, Error>
     where
         Self: Sized;
     fn ser(&self, raw: &mut [u8; W]);
@@ -50,13 +44,16 @@ where
         write!(f, "{:?}", PrettyBytes(raw))
     }
 
-    fn decode(raw: &[u8]) -> Option<Self>
+    fn decode(raw: &[u8]) -> Result<Self, Error>
     where
         Self: Sized,
     {
         match raw.try_into() {
             Ok(arr) => Self::des(arr),
-            Err(_) => None,
+            Err(_) => Err(Error {
+                message: "unexpected width",
+                payload: raw,
+            }),
         }
     }
 }
@@ -165,8 +162,8 @@ impl<const WIDTH: usize> HasWidth for Blob<WIDTH> {
 }
 
 impl<const WIDTH: usize> Parsergen<WIDTH> for Blob<WIDTH> {
-    fn des(raw: &[u8; WIDTH]) -> Option<Self> {
-        Some(Self(*raw))
+    fn des(raw: &[u8; WIDTH]) -> Result<Self, Error> {
+        Ok(Self(*raw))
     }
 
     fn ser(&self, res: &mut [u8; WIDTH]) {
@@ -184,8 +181,8 @@ impl<const WIDTH: usize> HasWidth for Filler<WIDTH> {
     const WIDTH: usize = WIDTH;
 }
 impl<const WIDTH: usize> Parsergen<WIDTH> for Filler<WIDTH> {
-    fn des(_raw: &[u8; WIDTH]) -> Option<Self> {
-        Some(Self)
+    fn des(_raw: &[u8; WIDTH]) -> Result<Self, Error> {
+        Ok(Self)
     }
 
     fn ser(&self, res: &mut [u8; WIDTH]) {
@@ -204,11 +201,11 @@ impl<T: HasWidth> HasWidth for Option<T> {
 }
 
 impl<T: Parsergen<WIDTH> + HasWidth, const WIDTH: usize> Parsergen<WIDTH> for Option<T> {
-    fn des(raw: &[u8; WIDTH]) -> Option<Self> {
+    fn des(raw: &[u8; WIDTH]) -> Result<Self, Error> {
         match T::des(raw) {
-            Some(ok) => Some(Some(ok)),
-            None if raw.iter().all(|sym| *sym == b' ') => Some(None),
-            None => None,
+            Ok(ok) => Ok(Some(ok)),
+            Err(_) if raw.iter().all(|sym| *sym == b' ') => Ok(None),
+            Err(err) => Err(err),
         }
     }
 
@@ -235,20 +232,20 @@ pub fn des_array<
     const CNT: usize,
 >(
     raw: &[u8; WIDTH],
-) -> Option<[T; CNT]> {
+) -> Result<[T; CNT], Error> {
     let mut res: [T; CNT] = [T::default(); CNT];
 
     assert_eq!(WIDTH, FWIDTH * CNT);
     for (ix, chunk) in raw.chunks(FWIDTH).enumerate() {
-        let buf = <[u8; FWIDTH]>::try_from(chunk).unwrap();
-        res[ix] = T::des(&buf)?;
+        let buf = <&[u8; FWIDTH]>::try_from(chunk).unwrap();
+        res[ix] = T::des(buf)?;
     }
-    Some(res)
+    Ok(res)
 }
 
 pub fn des_iso_array<T, Iso, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
     raw: &[u8; WIDTH],
-) -> Option<[T; CNT]>
+) -> Result<[T; CNT], Error>
 where
     Iso: Parsergen<FWIDTH>,
     T: Default + Copy,
@@ -258,11 +255,11 @@ where
 
     assert_eq!(WIDTH, FWIDTH * CNT);
     for (ix, chunk) in raw.chunks(FWIDTH).enumerate() {
-        let buf = <[u8; FWIDTH]>::try_from(chunk).unwrap();
-        res[ix] = T::from(Iso::des(&buf)?);
+        let buf = <&[u8; FWIDTH]>::try_from(chunk).unwrap();
+        res[ix] = T::from(Iso::des(buf)?);
     }
 
-    Some(res)
+    Ok(res)
 }
 
 pub fn ser_array<
@@ -317,7 +314,7 @@ impl<const WIDTH: usize> HasWidth for Cents<WIDTH> {
 }
 
 impl<const WIDTH: usize> Parsergen<WIDTH> for Cents<WIDTH> {
-    fn des(raw: &[u8; WIDTH]) -> Option<Self>
+    fn des(raw: &[u8; WIDTH]) -> Result<Self, Error>
     where
         Self: Sized,
     {
@@ -325,16 +322,30 @@ impl<const WIDTH: usize> Parsergen<WIDTH> for Cents<WIDTH> {
             b' ' => 1,
             b'0' => 1,
             b'-' => -1,
-            _ => return None,
+            _ => {
+                return Err(Error {
+                    message: "Invalid sign",
+                    payload: raw,
+                })
+            }
         };
         if raw[WIDTH - 3] != b'.' {
-            return None;
+            return Err(Error {
+                message: "Missing . on 3rd place",
+                payload: raw,
+            });
         }
 
-        let num1: u64 = fold_digits(&raw[1..WIDTH - 3])?;
-        let num2: u64 = fold_digits(&raw[WIDTH - 2..])?;
+        let num1: u64 = fold_digits(&raw[1..WIDTH - 3]).ok_or(Error {
+            message: "Invalid digits",
+            payload: &raw[1..WIDTH - 3],
+        })?;
+        let num2: u64 = fold_digits(&raw[WIDTH - 2..]).ok_or(Error {
+            message: "Invalid digits",
+            payload: &raw[WIDTH - 2..],
+        })?;
 
-        Some(Cents(sign * (num1 as i64 * 100 + num2 as i64)))
+        Ok(Cents(sign * (num1 as i64 * 100 + num2 as i64)))
     }
 
     fn ser(&self, raw: &mut [u8; WIDTH]) {
@@ -356,11 +367,11 @@ impl HasWidth for primitives::ISIN {
     const WIDTH: usize = 12;
 }
 impl Parsergen<12> for primitives::ISIN {
-    fn des(raw: &[u8; 12]) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        fold_isin(*raw)
+    fn des(raw: &[u8; 12]) -> Result<Self, Error> {
+        fold_isin(*raw).ok_or(Error {
+            message: "Invalid ISIN",
+            payload: raw,
+        })
     }
 
     fn ser(&self, raw: &mut [u8; 12]) {

@@ -33,7 +33,7 @@ fn derive_decode_impl(input: DecodeInput) -> Result<TokenStream> {
         DecodeInput::Struct(StructInput::Unit(x)) => for_unit_struct(x),
         DecodeInput::Enum(x) => for_enum(x),
     }?;
-    //println!("{}", r);
+    println!("{}", r);
     Ok(r)
 }
 
@@ -45,7 +45,7 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
         EnumVariant::UnitEnum(StructUnit { ty, literal, .. }) => {
             quote! {
                 if raw == &#literal {
-                    return Some(Self::#ty)
+                    return Ok(Self::#ty)
                 }
             }
         }
@@ -59,10 +59,9 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
                 ..
             } = &sf.fields[0];
             quote! {
-                let tmp: Option<#fty> = (|slice|Some(#parser))(raw);
-                match tmp {
-                    None => {},
-                    Some(#name) => return Some(Self::#ty #self_constr),
+                match (|slice|Ok::<_, ::parsergen::Error>(#parser))(raw) {
+                    Err(_) => {},
+                    Ok(#name) => return Ok(Self::#ty #self_constr),
                 }
             }
         }
@@ -91,9 +90,9 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
 
         impl ::parsergen::Parsergen<{#width}> for #ty {
             #[inline(always)]
-            fn des<'a>(raw: &[u8; #width]) -> Option<Self> {
+            fn des<'a>(raw: &'a [u8; #width]) -> Result<Self, ::parsergen::Error> {
                 #(#checks)*
-                None
+                Err(Error { message: "Unexpected enum value", payload: raw })
             }
 
             #[inline]
@@ -125,11 +124,11 @@ fn for_unit_struct(input: StructUnit) -> Result<TokenStream> {
 
         impl ::parsergen::Parsergen<{#width}> for #ty {
             #[inline(always)]
-            fn des<'a>(raw: &[u8; #width]) -> Option<Self> {
+            fn des<'a>(raw: &'a [u8; #width]) -> Result<Self, ::parsergen::Error> {
                 if raw != & #literal {
-                    return None
+                    return Err(Error { message: "invalid unit struct", payload: raw })
                 }
-                Some(Self)
+                Ok(Self)
             }
 
             #[inline]
@@ -213,11 +212,11 @@ fn for_struct_with_fields(input: StructFields) -> Result<TokenStream> {
         }
 
         impl ::parsergen::Parsergen<{#width}> for #ty {
-            fn des(raw: &[u8; #width]) -> Option<Self> {
+            fn des<'a>(raw: &'a [u8; #width]) -> Result<Self, ::parsergen::Error> {
                 const O_0: usize = 0;
                 #(#offsets)*
                 #(#parse_fields)*
-                Some(Self #self_constr)
+                Ok(Self #self_constr)
 
             }
 
@@ -512,7 +511,11 @@ impl SField {
 
         let parser = match (&kind, arr) {
             (FieldKind::Literal(lit), None) => {
-                quote!(::parsergen::parse_literal::<#ty>(&#lit, slice)?)
+                let err = quote!(Error {
+                    message: "not a valid numeric literal",
+                    payload: slice
+                });
+                quote!(::parsergen::parse_literal::<#ty>(&#lit, slice).ok_or(#err)?)
             }
             (FieldKind::Literal(_), Some(_)) => unreachable!(),
 
@@ -530,7 +533,6 @@ impl SField {
             (FieldKind::Iso(iso), Some(TypeArray { len, elem, .. })) => {
                 let fwidth = quote!(<#iso as ::parsergen::HasWidth>::WIDTH);
                 quote!(::parsergen::des_iso_array::<#elem, #iso, {#fwidth * #len}, {#fwidth}, #len>(slice)?)
-                //                quote!(<::parsergen::FixedArr::<#elem, #iso, #len>>::des(slice)?.0)
             }
             (FieldKind::Inherited, None) => {
                 quote!(<#ty as ::parsergen::Parsergen<{#width}>>::des(slice)?)

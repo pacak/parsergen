@@ -63,7 +63,7 @@ fn parse_unsigned_bit(width: usize, ty: TokenStream) -> impl Fn(&mut usize) -> O
         if rest >= 8 {
             let mul = 10u128.pow((width - *offset - 8) as u32);
             let s = quote! {{
-                let raw = unsafe { as_array(&input[#offset .. #offset + 8]) };
+                let raw = unsafe { as_array(input, #offset, 8) };
 
                 let v = u64::from_le_bytes(*raw);
                 const ADD: u64 = u64::from_le_bytes([b'F'; 8]);
@@ -85,7 +85,7 @@ fn parse_unsigned_bit(width: usize, ty: TokenStream) -> impl Fn(&mut usize) -> O
         } else if rest >= 4 {
             let mul = 10u128.pow((width - *offset - 4) as u32);
             let s = quote! {{
-                let raw = unsafe { as_array(&input[#offset .. #offset + 4]) };
+                let raw = unsafe { as_array(input, #offset, 4) };
 
                 let v = u32::from_le_bytes(*raw);
                 const ADD: u32 = u32::from_le_bytes([b'F'; 4]);
@@ -166,22 +166,37 @@ pub fn parse_fixed_arr_inner(ty: &Type, style: Style, width: usize, cnt: &Expr) 
         width,
     });
 
-    let parser = quote!( |input: [u8; #width * #cnt]| {
-        unsafe fn as_array<const N: usize>(slice: &[u8]) -> &[u8; N] {
-            &*(slice.as_ptr() as *const [u8; N])
-        }
-
+    let err = quote!(|| ::parsergen::Error {
+        message: "invalid fixed literal",
+        payload: slice
+    });
+    let as_array = mk_as_array();
+    let parser = quote!( |input: &'a [u8; (#width * #cnt)]| {
+        #as_array
         let mut res = [0; #cnt];
         let inner = #inner;
         for i in 0..#cnt {
             let offset = i * #width;
-            let slice = unsafe { as_array::<#width>(&input[offset .. offset + #width]) };
-            res[i] = inner(*slice)?;
+            let slice = unsafe { as_array::<#width>(input, offset, #width) };
+            res[i] = inner(slice).ok_or_else(#err)?;
         }
-        Some(res)
+        Ok(res)
     });
 
-    quote!((#parser)(*slice)?)
+    quote!((#parser)(slice)?)
+}
+
+fn mk_as_array() -> TokenStream {
+    quote! {
+        unsafe fn as_array<'a, const N: usize>(
+            slice: &'a [u8],
+            offset: usize,
+            width: usize,
+        ) -> &'a [u8; N] {
+            let raw = &slice[offset..offset + width];
+            &*(raw.as_ptr() as *const [u8; N])
+        }
+    }
 }
 
 pub fn parse_fixed_inner(ty: &Type, style: Style, width: usize) -> TokenStream {
@@ -190,10 +205,15 @@ pub fn parse_fixed_inner(ty: &Type, style: Style, width: usize) -> TokenStream {
         style,
         width,
     });
-    quote!((#parser)(*slice)?)
+    let err = quote!(|| ::parsergen::Error {
+        message: "invalid fixed literal",
+        payload: slice
+    });
+    quote!((#parser)(slice).ok_or_else(#err)?)
 }
 
 pub fn parse_fixed_impl(ParseInput { ty, style, width }: ParseInput) -> TokenStream {
+    let as_array = mk_as_array();
     let parsers = match style {
         Style::Signed(uty) => {
             let body = unfold(1, parse_unsigned_bit(width, uty));
@@ -214,10 +234,8 @@ pub fn parse_fixed_impl(ParseInput { ty, style, width }: ParseInput) -> TokenStr
             body.chain(Some(res))
         }
     };
-    quote!( |input: [u8; #width]| {
-        unsafe fn as_array<const N: usize>(slice: &[u8]) -> &[u8; N] {
-            &*(slice.as_ptr() as *const [u8; N])
-        }
+    quote!( |input: &'a [u8]| {
+        #as_array
         let mut val = 0;
         #(#parsers)*
     })

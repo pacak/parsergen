@@ -15,7 +15,7 @@ macro_rules! check {
 
         fn $fn() {
             let input: [u8; $len * 2] = PAYLOAD[..$len * 2].try_into().unwrap();
-            let _a = <$ident>::des(black_box(&input)).unwrap_or_else(|| <$ident>::default());
+            let _a = <$ident>::des(black_box(&input)).unwrap_or_else(|_| <$ident>::default());
         }
     };
 }

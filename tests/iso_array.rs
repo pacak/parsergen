@@ -13,7 +13,7 @@ where
     assert_eq!(parsed, T::des(raw).unwrap(), "while testing decoder");
 }
 
-#[derive(Eq, PartialEq, Debug, Parsergen)]
+#[derive(Parsergen, Eq, PartialEq, Debug)]
 struct X2 {
     #[parsergen(decimal: 3)]
     val: [u32; 3],
@@ -65,7 +65,7 @@ impl From<X8> for () {
 /// doc
 struct X8a;
 
-#[derive(Eq, PartialEq, Debug, Parsergen)]
+#[derive(Parsergen, Eq, PartialEq, Debug)]
 enum X10 {
     #[parsergen(literal: "lo")]
     F1,

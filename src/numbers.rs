@@ -17,20 +17,6 @@ impl<T, const WIDTH: usize> FixedT<T, WIDTH> {
     }
 }
 
-#[derive(Copy, Clone, Default)]
-/// Implements Parsergen for fixed width numbers
-///
-/// validity check is optimized with vector instructions
-pub struct FixedTV<T, const WIDTH: usize>(pub T);
-impl<T, const WIDTH: usize> HasWidth for FixedTV<T, WIDTH> {
-    const WIDTH: usize = WIDTH;
-}
-impl<T, const WIDTH: usize> FixedTV<T, WIDTH> {
-    pub fn new(val: T) -> Self {
-        Self(val)
-    }
-}
-
 pub fn ser_fixed_array<T, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
     arr: [T; CNT],
     raw: &mut [u8; WIDTH],
@@ -49,19 +35,11 @@ macro_rules! derive_unsigned {
     ($ty:ty) => {
         impl<const WIDTH: usize> Parsergen<WIDTH> for FixedT<$ty, WIDTH> {
             #[inline(always)]
-            fn des(raw: &[u8; WIDTH]) -> Option<Self> {
-                Some(FixedT(fold_digits(raw)?))
-            }
-
-            fn ser(&self, res: &mut [u8; WIDTH]) {
-                unfold_digits(self.0, res);
-            }
-        }
-
-        impl<const WIDTH: usize> Parsergen<WIDTH> for FixedTV<$ty, WIDTH> {
-            #[inline(always)]
-            fn des(raw: &[u8; WIDTH]) -> Option<Self> {
-                Some(Self(fold_digits_vec::<$ty>(raw)?))
+            fn des(raw: &[u8; WIDTH]) -> Result<Self, Error> {
+                Ok(FixedT(fold_digits(raw).ok_or(Error {
+                    message: "invalid digits",
+                    payload: raw,
+                })?))
             }
 
             fn ser(&self, res: &mut [u8; WIDTH]) {
@@ -75,30 +53,18 @@ macro_rules! derive_signed {
     ($ty:ty, $ti:ty) => {
         impl<const WIDTH: usize> Parsergen<WIDTH> for FixedT<$ty, WIDTH> {
             #[inline(always)]
-            fn des(raw: &[u8; WIDTH]) -> Option<Self> {
-                let acc: $ti = fold_digits(&raw[1..])?;
+            fn des(raw: &[u8; WIDTH]) -> Result<Self, Error> {
+                let acc: $ti = fold_digits(&raw[1..]).ok_or(Error {
+                    message: "invalid digits",
+                    payload: raw,
+                })?;
                 match raw[0] {
-                    b'0' | b' ' | b'+' => Some(Self(acc as $ty)),
-                    b'-' => Some(Self(-(acc as $ty))),
-                    _ => None,
-                }
-            }
-
-            fn ser(&self, res: &mut [u8; WIDTH]) {
-                let val = self.0;
-                res[0] = if val >= 0 { b' ' } else { b'-' };
-                unfold_digits(val.abs() as $ti, &mut res[1..]);
-            }
-        }
-
-        impl<const WIDTH: usize> Parsergen<WIDTH> for FixedTV<$ty, WIDTH> {
-            #[inline]
-            fn des(raw: &[u8; WIDTH]) -> Option<Self> {
-                let acc: $ti = fold_digits_vec::<$ti>(&raw[1..])?;
-                match raw[0] {
-                    b'0' | b' ' | b'+' => Some(Self(acc as $ty)),
-                    b'-' => Some(Self(-(acc as $ty))),
-                    _ => None,
+                    b'0' | b' ' | b'+' => Ok(Self(acc as $ty)),
+                    b'-' => Ok(Self(-(acc as $ty))),
+                    _ => Err(Error {
+                        message: "invalid digits",
+                        payload: raw,
+                    }),
                 }
             }
 
