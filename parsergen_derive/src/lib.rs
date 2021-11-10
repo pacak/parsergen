@@ -515,7 +515,7 @@ impl SField {
                     message: "not a valid numeric literal",
                     payload: slice
                 });
-                quote!(::parsergen::parse_literal::<#ty>(&#lit, slice).ok_or(#err)?)
+                quote!(::parsergen::parse_literal::<#ty>(&#lit, slice).ok_or_else(||#err)?)
             }
             (FieldKind::Literal(_), Some(_)) => unreachable!(),
 
