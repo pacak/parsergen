@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use parsergen::primitives::*;
 use parsergen::time::{read_time12, write_time12};
@@ -153,10 +153,6 @@ impl Parsergen<12> for Time12 {
     fn ser(&self, res: &mut [u8; 12]) {
         write_time12(self.0, res)
     }
-
-    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", PrettyBytes(raw))
-    }
 }
 
 impl From<Time12> for ExchangeTime {
@@ -190,22 +186,6 @@ struct FutB6 {
     estimated_price: i32,
 }
 
-/*
-fn b_pqpair_arr(c: &mut Criterion) {
-    let input = b" 12345123456 12345123456 12345123456 12345123456 12345123456";
-    c.bench_function("PQPairFut pvec x 1", |b| {
-        b.iter(|| {
-            PQPairFut::des(black_box(&input[..12])).unwrap();
-        })
-    });
-
-    c.bench_function("PQPairFut pvec x 5 ", |b| {
-        b.iter(|| {
-            <[PQPairFut; 5]>::des(black_box(input)).unwrap();
-        })
-    });
-}*/
-
 fn b_cents(c: &mut Criterion) {
     let input = b" 00001234.56";
     c.bench_function("cents 12", |b| {
@@ -229,69 +209,6 @@ fn b_unfold_isin(c: &mut Criterion) {
     c.bench_function("unfold_isin", |b| {
         b.iter(|| {
             unfold_isin(black_box(input));
-        })
-    });
-}
-fn des_pq2(raw: &[u8; 12]) -> Option<PQPairFut> {
-    let mut buf = [0; 16];
-    buf[..12].copy_from_slice(raw);
-    let (_mask, [hi, lo]) = primitives::read_decimal(buf);
-    Some(PQPairFut {
-        price: hi as i32,
-        qty: lo as u32,
-    })
-}
-
-fn b_fut_pairs_vec(c: &mut Criterion) {
-    let input = b" 12345123456";
-    let input = black_box(input);
-    c.bench_function("PQPairFut vec", |b| b.iter(|| des_pq2(input).unwrap()));
-}
-
-fn b_fut_pairs_vec_u(c: &mut Criterion) {
-    let input = b" 12345123456";
-    let input = black_box(input);
-    c.bench_function("PQPairFut vec copy paste", |b| {
-        b.iter(|| {
-            {
-                let mut buf = [0; 16];
-                buf[..12].copy_from_slice(input);
-                let (_mask, [hi, lo]) = unsafe {
-                    use core::arch::x86_64::*;
-                    use std::intrinsics::transmute;
-                    let ascii_digits = transmute::<[u8; 16], __m128i>(buf);
-                    let offset = _mm_set1_epi8((b'0' + 128) as i8);
-                    let shifted_digits = _mm_sub_epi8(ascii_digits, offset);
-                    let high_bound = _mm_set1_epi8(-128 + 10);
-                    let mask = _mm_cmpgt_epi8(high_bound, shifted_digits);
-                    let digits_mask = _mm_movemask_epi8(mask);
-
-                    let chunk = transmute(buf);
-                    let zeros = _mm_set1_epi8(b'0' as i8);
-                    let chunk = _mm_sub_epi8(chunk, zeros);
-
-                    //        let mult = _mm_set_epi8(1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10);
-                    let mult = _mm_set1_epi16(0x010a);
-                    let chunk = _mm_maddubs_epi16(chunk, mult);
-
-                    let mult = _mm_set_epi16(1, 100, 1, 100, 1, 100, 1, 100);
-                    let chunk = _mm_madd_epi16(chunk, mult);
-
-                    let chunk = _mm_packus_epi32(chunk, chunk);
-                    let mult = _mm_set_epi16(0, 0, 0, 0, 1, 10000, 1, 10000);
-                    let chunk = _mm_madd_epi16(chunk, mult);
-
-                    let re: [u32; 4] = transmute(chunk);
-                    let hi = re[0] as u64;
-                    let lo = re[1] as u64;
-
-                    (digits_mask, [hi, lo])
-                };
-                PQPairFut {
-                    price: hi as i32,
-                    qty: lo as u32,
-                }
-            }
         })
     });
 }
@@ -338,8 +255,6 @@ criterion_group!(
     b_unfold_isin,
     b_cents,
     b_fut_pairs,
-    b_fut_pairs_vec,
-    b_fut_pairs_vec_u,
     b_fut_dir,
     b_fut_prices,
     b_fut,

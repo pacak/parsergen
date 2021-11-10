@@ -165,24 +165,16 @@ pub struct ISIN(pub u64);
 /// folds a valid ISIN into u64, see [unfold_isin]
 pub fn fold_isin(raw: [u8; 12]) -> Option<ISIN> {
     let mut res: u64 = 0;
-    let mut mixer = luhn3::Mixer::default();
+
     for c in raw.iter() {
-        match c {
-            b'0'..=b'9' => {
-                let c = c - b'0';
-                mixer.push(c);
-                res = res * 36 + c as u64;
-            }
-            b'A'..=b'Z' => {
-                let c = c - b'A' + 10;
-                mixer.push(c / 10);
-                mixer.push(c % 10);
-                res = res * 36 + c as u64;
-            }
+        res *= 36;
+        res += match c {
+            b'0'..=b'9' => (c - b'0') as u64,
+            b'A'..=b'Z' => (c - b'A' + 10) as u64,
             _ => return None,
         }
     }
-    if mixer.valid() {
+    if luhn3::valid(&raw) {
         Some(ISIN(res))
     } else {
         None
