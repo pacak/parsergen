@@ -1,38 +1,14 @@
 use std::marker::PhantomData;
 
 extern crate self as parsergen;
+
 pub mod numbers;
 pub mod primitives;
 pub mod time;
-pub use numbers::*;
+pub use crate::numbers::*;
 
 use crate::primitives::*;
 pub use parsergen_derive::*;
-
-#[derive(Parsergen)]
-struct Foo {
-    #[parsergen(decimal: 32)]
-    foo: u32,
-}
-
-#[derive(Debug)]
-pub struct Error<'a> {
-    pub _msg: &'static str,
-    pub _payload: &'a [u8],
-}
-
-impl std::fmt::Display for Error<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Parse error: {}, payload: {:?}",
-            self._msg,
-            PrettyBytes(self._payload)
-        )
-    }
-}
-
-impl<'a> std::error::Error for Error<'a> {}
 
 pub trait HasWidth {
     const WIDTH: usize;
@@ -42,14 +18,21 @@ pub trait Parsergen<const W: usize>
 where
     Self: HasWidth,
 {
+    /// Parse a thing from fixed width array
     fn des(raw: &[u8; W]) -> Option<Self>
     where
         Self: Sized;
+
+    /// store a thing into a fixed width array
     fn ser(&self, raw: &mut [u8; W]);
+
+    /// split a slice into array and annotate it with how it would be parsed  instead of actually
+    /// parsing it
     fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", PrettyBytes(raw))
     }
 
+    /// parse thing from a slice
     fn decode(raw: &[u8]) -> Option<Self>
     where
         Self: Sized,
@@ -61,7 +44,9 @@ where
     }
 }
 
-//
+/// Pretty print a slice of bytes, non ASCII are escaped in a way similar to
+/// [`escape_default`][::std::primitive::char::escape_default] but with hex
+/// escape instead of unicode one
 pub struct PrettyBytes<'a>(pub &'a [u8]);
 impl std::fmt::Debug for PrettyBytes<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -84,6 +69,7 @@ impl std::fmt::Debug for PrettyBytes<'_> {
     }
 }
 
+/// Pretty print a slice of bytes as an array of chunks
 pub struct PrettyArrBytes<'a, const N: usize>(pub &'a [u8]);
 
 impl<'a, const N: usize> PrettyArrBytes<'a, N> {
@@ -100,6 +86,9 @@ impl<const N: usize> std::fmt::Debug for PrettyArrBytes<'_, N> {
     }
 }
 
+/// parse a static pattern into a default value
+///
+/// used internally
 pub fn parse_literal<'a, T: Default>(lit: &'static [u8], raw: &'a [u8]) -> Option<T> {
     if lit == raw {
         Some(T::default())
@@ -108,13 +97,7 @@ pub fn parse_literal<'a, T: Default>(lit: &'static [u8], raw: &'a [u8]) -> Optio
     }
 }
 
-pub struct FixedArr<Ty, Iso, const CNT: usize>(pub [Ty; CNT], PhantomData<Iso>);
-impl<Ty, Iso, const CNT: usize> From<[Ty; CNT]> for FixedArr<Ty, Iso, CNT> {
-    fn from(arr: [Ty; CNT]) -> Self {
-        FixedArr(arr, PhantomData)
-    }
-}
-
+/// used for sliced printing of unparsed messages
 pub struct Sliced<'a, T, const WIDTH: usize>(&'a [u8], PhantomData<T>);
 
 impl<'a, T, const WIDTH: usize> From<&'a [u8]> for Sliced<'a, T, WIDTH> {
@@ -123,6 +106,7 @@ impl<'a, T, const WIDTH: usize> From<&'a [u8]> for Sliced<'a, T, WIDTH> {
     }
 }
 
+/// used internally for sliced printing of unparsed messages
 pub struct SlicedArr<'a, T, const WIDTH: usize>(&'a [u8], PhantomData<T>);
 impl<'a, T, const WIDTH: usize> From<&'a [u8]> for SlicedArr<'a, T, WIDTH> {
     fn from(val: &'a [u8]) -> Self {
@@ -144,6 +128,7 @@ impl<T: Parsergen<WIDTH>, const WIDTH: usize> std::fmt::Debug for Sliced<'_, T, 
     }
 }
 
+/// used for sliced printing of unparsed messages
 pub struct SlicedOwned<T, const WIDTH: usize>(Vec<u8>, PhantomData<T>);
 
 impl<T, const WIDTH: usize> From<&[u8]> for SlicedOwned<T, WIDTH> {
@@ -158,6 +143,7 @@ impl<T: Parsergen<WIDTH>, const WIDTH: usize> std::fmt::Debug for SlicedOwned<T,
     }
 }
 
+/// consume and return an item without any parsing
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub struct Blob<const WIDTH: usize>(pub [u8; WIDTH]);
 impl<const WIDTH: usize> HasWidth for Blob<WIDTH> {
@@ -172,12 +158,9 @@ impl<const WIDTH: usize> Parsergen<WIDTH> for Blob<WIDTH> {
     fn ser(&self, res: &mut [u8; WIDTH]) {
         *res = self.0;
     }
-
-    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", PrettyBytes(raw))
-    }
 }
 
+/// consume an item without any parsing, fill back with spaces
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Default)]
 pub struct Filler<const WIDTH: usize>;
 impl<const WIDTH: usize> HasWidth for Filler<WIDTH> {
@@ -192,10 +175,6 @@ impl<const WIDTH: usize> Parsergen<WIDTH> for Filler<WIDTH> {
         for c in res.iter_mut() {
             *c = b' '
         }
-    }
-
-    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", PrettyBytes(raw))
     }
 }
 
@@ -228,6 +207,7 @@ impl<T: Parsergen<WIDTH> + HasWidth, const WIDTH: usize> Parsergen<WIDTH> for Op
     }
 }
 
+/// used internally to parse arrays of of items
 pub fn des_array<
     T: Parsergen<FWIDTH> + Default + Copy,
     const WIDTH: usize,
@@ -246,6 +226,7 @@ pub fn des_array<
     Some(res)
 }
 
+/// used internally to parse arrays of of items
 pub fn des_iso_array<T, Iso, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
     raw: &[u8; WIDTH],
 ) -> Option<[T; CNT]>
@@ -265,6 +246,7 @@ where
     Some(res)
 }
 
+/// used internally to serialize arrays of of items
 pub fn ser_array<
     T: Parsergen<FWIDTH> + Default + Copy,
     const WIDTH: usize,
@@ -281,6 +263,7 @@ pub fn ser_array<
     }
 }
 
+/// used internally to serialize arrays of of items
 pub fn ser_iso_array<T, Iso, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
     arr: [T; CNT],
     raw: &mut [u8; WIDTH],
@@ -356,23 +339,11 @@ impl HasWidth for primitives::ISIN {
     const WIDTH: usize = 12;
 }
 impl Parsergen<12> for primitives::ISIN {
-    fn des(raw: &[u8; 12]) -> Option<Self>
-    where
-        Self: Sized,
-    {
+    fn des(raw: &[u8; 12]) -> Option<Self> {
         fold_isin(*raw)
     }
 
     fn ser(&self, raw: &mut [u8; 12]) {
         *raw = primitives::unfold_isin(*self);
     }
-}
-
-pub fn slice_arr<T: Parsergen<W>, const W: usize>(
-    raw: &[u8],
-    f: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
-    let mut d = f.debug_list();
-    d.entries(raw.chunks(W).map(|c| Sliced::<T, W>::from(c)));
-    d.finish()
 }

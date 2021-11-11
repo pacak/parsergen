@@ -530,7 +530,6 @@ impl SField {
             (FieldKind::Iso(iso), Some(TypeArray { len, elem, .. })) => {
                 let fwidth = quote!(<#iso as ::parsergen::HasWidth>::WIDTH);
                 quote!(::parsergen::des_iso_array::<#elem, #iso, {#fwidth * #len}, {#fwidth}, #len>(slice)?)
-                //                quote!(<::parsergen::FixedArr::<#elem, #iso, #len>>::des(slice)?.0)
             }
             (FieldKind::Inherited, None) => {
                 quote!(<#ty as ::parsergen::Parsergen<{#width}>>::des(slice)?)
