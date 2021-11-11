@@ -69,6 +69,12 @@ impl std::fmt::Debug for PrettyBytes<'_> {
     }
 }
 
+impl<'a> From<&'a [u8]> for PrettyBytes<'a> {
+    fn from(xs: &'a [u8]) -> Self {
+        PrettyBytes(xs)
+    }
+}
+
 /// Pretty print a slice of bytes as an array of chunks
 pub struct PrettyArrBytes<'a, const N: usize>(pub &'a [u8]);
 
