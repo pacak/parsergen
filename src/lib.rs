@@ -1,3 +1,4 @@
+use std::array::TryFromSliceError;
 use std::marker::PhantomData;
 
 extern crate self as parsergen;
@@ -33,14 +34,11 @@ where
     }
 
     /// parse thing from a slice
-    fn decode(raw: &[u8]) -> Option<Self>
+    fn decode(raw: &[u8]) -> Result<Option<Self>, TryFromSliceError>
     where
         Self: Sized,
     {
-        match raw.try_into() {
-            Ok(arr) => Self::des(arr),
-            Err(_) => None,
-        }
+        raw.try_into().map(|arr| Self::des(arr))
     }
 }
 
