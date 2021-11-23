@@ -1,2 +1,3 @@
 via in enum fields
 luhn3 - make optional
+make serialization code deriving optional?
