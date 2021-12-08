@@ -191,7 +191,7 @@ fn x15i() {
 
 #[test]
 fn cents() {
-    roundtrip::<Cents<8>, 8>(b" 1234.56", Cents::from(123456));
+    roundtrip::<Cents<8>, 8>(b"01234.56", Cents::from(123456));
 }
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]
@@ -199,7 +199,7 @@ struct X16(#[parsergen(via: Cents<5>)] i64);
 
 #[test]
 fn x16() {
-    roundtrip(b" 1.23", X16(123));
+    roundtrip(b"01.23", X16(123));
 }
 
 #[derive(Eq, PartialEq, Parsergen, Debug)]

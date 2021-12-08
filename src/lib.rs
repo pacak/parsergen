@@ -326,7 +326,7 @@ impl<const WIDTH: usize> Parsergen<WIDTH> for Cents<WIDTH> {
 
     fn ser(&self, raw: &mut [u8; WIDTH]) {
         if self.0 >= 0 {
-            raw[0] = b' ';
+            raw[0] = b'0';
         } else {
             raw[0] = b'-';
         }
