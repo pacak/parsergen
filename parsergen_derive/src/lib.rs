@@ -59,6 +59,8 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
                 ..
             } = &sf.fields[0];
             quote! {
+                #[allow(clippy::needless_question_mark)]
+                // ? does nothing and it comes from unification between different parsers
                 let tmp: Option<#fty> = (|slice|Some(#parser))(raw);
                 match tmp {
                     None => {},
