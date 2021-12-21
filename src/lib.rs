@@ -34,6 +34,8 @@ where
     }
 
     /// parse thing from a slice
+    ///
+    /// Err indicates invalid length, None indicates invalid content
     fn decode(raw: &[u8]) -> Result<Option<Self>, TryFromSliceError>
     where
         Self: Sized,
