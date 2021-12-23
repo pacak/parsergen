@@ -15,6 +15,55 @@ pub trait HasWidth {
     const WIDTH: usize;
 }
 
+pub struct ValidBytes<'a, T, const W: usize> {
+    raw: &'a [u8],
+    typ: PhantomData<T>,
+}
+
+pub struct Signed;
+pub struct Unsigned;
+
+impl<'a, T: Parsergen<W>, const W: usize> std::fmt::Debug for ValidBytes<'a, T, W> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match T::decode(self.raw) {
+            Ok(Some(_)) => write!(f, "{:?}", PrettyBytes(self.raw)),
+            Ok(None) => write!(f, "\x1b[31m{:?}\x1b[30;0m", PrettyBytes(self.raw)),
+            Err(_) => write!(f, "\x1b[35m{:?}\x1b[30;0m", PrettyBytes(self.raw)),
+        }
+    }
+}
+
+impl<'a, const W: usize> std::fmt::Debug for ValidBytes<'a, Unsigned, W> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let valid = self.raw.iter().all(|&c| c >= b'0' && c <= b'9');
+        if valid {
+            write!(f, "{:?}", PrettyBytes(self.raw))
+        } else {
+            write!(f, "\x1b[31m{:?}\x1b[30;0m", PrettyBytes(self.raw))
+        }
+    }
+}
+
+impl<'a, const W: usize> std::fmt::Debug for ValidBytes<'a, Signed, W> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let valid = self.raw.iter().all(|&c| c >= b'0' && c <= b'9');
+        if valid {
+            write!(f, "{:?}", PrettyBytes(self.raw))
+        } else {
+            write!(f, "\x1b[31m{:?}\x1b[30;0m", PrettyBytes(self.raw))
+        }
+    }
+}
+
+impl<'a, T, const W: usize> From<&'a [u8]> for ValidBytes<'a, T, W> {
+    fn from(raw: &'a [u8]) -> Self {
+        Self {
+            raw,
+            typ: PhantomData,
+        }
+    }
+}
+
 pub trait Parsergen<const W: usize>
 where
     Self: HasWidth,
@@ -209,7 +258,11 @@ impl<T: Parsergen<WIDTH> + HasWidth, const WIDTH: usize> Parsergen<WIDTH> for Op
     }
 
     fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        T::slice(raw, f)
+        if raw.iter().all(|c| *c == b' ') {
+            write!(f, "{:?}", PrettyBytes(raw))
+        } else {
+            T::slice(raw, f)
+        }
     }
 }
 

@@ -107,7 +107,7 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
 
             fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.debug_tuple(#ty_str)
-                    .field(&::parsergen::PrettyBytes(raw))
+                    .field(&::parsergen::ValidBytes::<Self, {#width}>::from(raw))
                 .finish()
             }
         }
@@ -141,7 +141,7 @@ fn for_unit_struct(input: StructUnit) -> Result<TokenStream> {
 
             fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.debug_tuple(#ty_str)
-                    .field(&::parsergen::PrettyBytes(raw))
+                    .field(&::parsergen::ValidBytes::<Self, {#width}>::from(raw))
                 .finish()
             }
         }
@@ -570,8 +570,19 @@ impl SField {
         };
 
         let slicer = match (&kind, arr) {
-            (FieldKind::Literal(_) | FieldKind::Fixed(_), None) => {
+            (FieldKind::Literal(_), None) => {
                 quote!(::parsergen::PrettyBytes)
+            }
+            (FieldKind::Fixed(_), None) => {
+                let style = crate::primitives::get_style(&ty)?;
+                match style {
+                    primitives::Style::Signed(_) => {
+                        quote!(::parsergen::ValidBytes::<::parsergen::Signed, {#width}>::from)
+                    }
+                    primitives::Style::Unsigned => {
+                        quote!(::parsergen::ValidBytes::<::parsergen::Unsigned, {#width}>::from)
+                    }
+                }
             }
             (FieldKind::Literal(_) | FieldKind::Fixed(_), Some(TypeArray { len, .. })) => {
                 quote!(::parsergen::PrettyArrBytes::<#len>::new)
