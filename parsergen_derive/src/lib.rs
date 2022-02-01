@@ -162,7 +162,7 @@ fn for_struct_with_fields(input: StructFields) -> Result<TokenStream> {
              ..
          }| {
             quote! {
-                let slice = ::arrayref::array_ref!(raw, #f, #t - #f);
+                let slice = ::parsergen::arrayref::array_ref!(raw, #f, #t - #f);
                 let #name = #parser;
             }
         },
@@ -179,7 +179,7 @@ fn for_struct_with_fields(input: StructFields) -> Result<TokenStream> {
             quote! {
                 #offset_assert;
                 let var = #name;
-                let slice = ::arrayref::array_mut_ref!(raw, #f, #t - #f);
+                let slice = ::parsergen::arrayref::array_mut_ref!(raw, #f, #t - #f);
                 #encoder;
             }
         },

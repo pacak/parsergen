@@ -9,6 +9,7 @@ pub mod time;
 pub use crate::numbers::*;
 
 use crate::primitives::*;
+pub use arrayref;
 pub use parsergen_derive::*;
 
 pub trait HasWidth {
@@ -78,8 +79,11 @@ where
 
     /// split a slice into array and annotate it with how it would be parsed  instead of actually
     /// parsing it
-    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", PrettyBytes(raw))
+    fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    where
+        Self: Sized,
+    {
+        write!(f, "{:?}", PrettyBytes::from(raw))
     }
 
     /// parse thing from a slice
