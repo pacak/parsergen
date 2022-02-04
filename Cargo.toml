@@ -36,6 +36,8 @@ name = "iso_array"
 [[test]]
 name = "tests"
 
+[[test]]
+name = "slice"
 
 
 [workspace]

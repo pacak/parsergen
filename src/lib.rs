@@ -47,8 +47,10 @@ impl<'a, const W: usize> std::fmt::Debug for ValidBytes<'a, Unsigned, W> {
 
 impl<'a, const W: usize> std::fmt::Debug for ValidBytes<'a, Signed, W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let valid = self.raw.iter().all(|&c| c >= b'0' && c <= b'9');
-        if valid {
+        let first_valid = !self.raw.is_empty()
+            && (self.raw[0] == b' ' || self.raw[0] == b'-' || self.raw[0] == b'0');
+        let tail_valid = self.raw.iter().skip(1).all(|&c| c >= b'0' && c <= b'9');
+        if first_valid && tail_valid {
             write!(f, "{:?}", PrettyBytes(self.raw))
         } else {
             write!(f, "\x1b[31m{:?}\x1b[30;0m", PrettyBytes(self.raw))
