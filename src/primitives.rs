@@ -66,6 +66,23 @@ pub fn fold_isin(raw: [u8; 12]) -> Option<ISIN> {
     }
 }
 
+/// folds a valid ISIN into u64, see [`unfold_isin`]
+///
+/// No digit check is performed
+pub fn fold_isin_unchecked(raw: [u8; 12]) -> Option<ISIN> {
+    let mut res: u64 = 0;
+
+    for c in raw.iter() {
+        res *= 36;
+        res += match c {
+            b'0'..=b'9' => (c - b'0') as u64,
+            b'A'..=b'Z' => (c - b'A' + 10) as u64,
+            _ => return None,
+        }
+    }
+    Some(ISIN(res))
+}
+
 /// Folds a valid ISIN with check digit missing into u64
 ///
 /// check digit will be calculated and used instead of one present
