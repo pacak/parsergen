@@ -46,7 +46,8 @@ where
 
 #[derive(Copy, Clone, Debug)]
 pub struct ISIN(pub u64);
-/// folds a valid ISIN into u64, see [unfold_isin]
+
+/// folds a valid ISIN into u64, see [`unfold_isin`]
 pub fn fold_isin(raw: [u8; 12]) -> Option<ISIN> {
     let mut res: u64 = 0;
 
@@ -65,7 +66,26 @@ pub fn fold_isin(raw: [u8; 12]) -> Option<ISIN> {
     }
 }
 
-/// unfolds a valid ISIN into an array of ASCII bytes, see [fold_isin]
+/// Folds a valid ISIN with check digit missing into u64
+///
+/// check digit will be calculated and used instead of one present
+/// in the array
+pub fn check_and_fold(mut raw: [u8; 12]) -> Option<ISIN> {
+    let mut res: u64 = 0;
+    raw[11] = luhn3::checksum(&raw[..11])?;
+
+    for c in raw.iter() {
+        res *= 36;
+        res += match c {
+            b'0'..=b'9' => (c - b'0') as u64,
+            b'A'..=b'Z' => (c - b'A' + 10) as u64,
+            _ => return None,
+        }
+    }
+    Some(ISIN(res))
+}
+
+/// unfolds a valid ISIN into an array of ASCII bytes, see [`fold_isin`]
 pub fn unfold_isin(isin: ISIN) -> [u8; 12] {
     let mut isin = isin.0;
     let mut res = [0; 12];
@@ -87,4 +107,13 @@ fn test_fold_unfold() {
 
     let folded = fold_isin(*msg).unwrap();
     assert_eq!(&unfold_isin(folded), msg);
+}
+
+#[test]
+fn test_check_fold_unfold() {
+    let msg_raw = b"AU0000XVGZA ";
+    let msg_exp = b"AU0000XVGZA3";
+
+    let folded = check_and_fold(*msg_raw).unwrap();
+    assert_eq!(&unfold_isin(folded), msg_exp);
 }
