@@ -527,7 +527,7 @@ impl SField {
                 parse_fixed_arr_inner(elem, style, width, len)
             }
             (FieldKind::Iso(iso), None) => {
-                quote!(<#ty>::from(<#iso as ::parsergen::Parsergen<{#width}>>::des(slice)?))
+                quote!(<#ty>::try_from(<#iso as ::parsergen::Parsergen<{#width}>>::des(slice)?).ok()?)
             }
             (FieldKind::Iso(iso), Some(TypeArray { len, elem, .. })) => {
                 let fwidth = quote!(<#iso as ::parsergen::HasWidth>::WIDTH);

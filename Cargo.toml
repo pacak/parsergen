@@ -37,6 +37,9 @@ name = "iso_array"
 name = "tests"
 
 [[test]]
+name = "try_from"
+
+[[test]]
 name = "slice"
 
 

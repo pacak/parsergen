@@ -305,7 +305,7 @@ where
     assert_eq!(WIDTH, FWIDTH * CNT);
     for (ix, chunk) in raw.chunks(FWIDTH).enumerate() {
         let buf = <[u8; FWIDTH]>::try_from(chunk).unwrap();
-        res[ix] = T::from(Iso::des(&buf)?);
+        res[ix] = T::try_from(Iso::des(&buf)?).ok()?;
     }
 
     Some(res)
