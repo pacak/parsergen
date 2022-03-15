@@ -1,6 +1,9 @@
 use proc_macro2::TokenStream;
-use quote::*;
-use syn::{parse::Parse, spanned::Spanned, *};
+use quote::quote;
+use syn::{
+    parse, parse::Parse, spanned::Spanned, Error, Expr, LitInt, Result, Token, Type, TypeGroup,
+    TypePath,
+};
 
 pub struct ParseInput {
     ty: Type,

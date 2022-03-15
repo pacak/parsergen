@@ -1,5 +1,6 @@
-/// use parse_fixed! instead
+/// use `parse_fixed!` instead
 #[inline(always)]
+#[must_use]
 pub fn fold_digits<T>(digits: &[u8]) -> Option<T>
 where
     T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8>,
@@ -16,7 +17,7 @@ where
 }
 
 #[inline(always)]
-pub fn unfold_digits<T>(val: T, res: &mut [u8])
+pub fn unfold_digits<T>(mut val: T, res: &mut [u8])
 where
     T: std::ops::Rem<Output = T>
         + std::ops::DivAssign<T>
@@ -25,13 +26,16 @@ where
         + From<u8>,
     <T as std::convert::TryInto<u8>>::Error: std::fmt::Debug,
 {
-    let mut val = val;
     for place in res.iter_mut().rev() {
-        *place = b'0' + (val % 10u8.into()).try_into().unwrap();
+        *place = b'0'
+            + (val % 10u8.into())
+                .try_into()
+                .expect("any T % 10 should fit into u8");
         val /= 10.into();
     }
 }
 
+#[must_use]
 pub fn fold_signed<T>(digits: &[u8]) -> Option<T>
 where
     T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8> + std::ops::Neg<Output = T>,
@@ -48,14 +52,15 @@ where
 pub struct ISIN(pub u64);
 
 /// folds a valid ISIN into u64, see [`unfold_isin`]
+#[must_use]
 pub fn fold_isin(raw: [u8; 12]) -> Option<ISIN> {
     let mut res: u64 = 0;
 
-    for c in raw.iter() {
+    for c in &raw {
         res *= 36;
         res += match c {
-            b'0'..=b'9' => (c - b'0') as u64,
-            b'A'..=b'Z' => (c - b'A' + 10) as u64,
+            b'0'..=b'9' => u64::from(c - b'0'),
+            b'A'..=b'Z' => u64::from(c - b'A' + 10),
             _ => return None,
         }
     }
@@ -69,14 +74,15 @@ pub fn fold_isin(raw: [u8; 12]) -> Option<ISIN> {
 /// folds a valid ISIN into u64, see [`unfold_isin`]
 ///
 /// No digit check is performed
+#[must_use]
 pub fn fold_isin_unchecked(raw: [u8; 12]) -> Option<ISIN> {
     let mut res: u64 = 0;
 
-    for c in raw.iter() {
+    for c in &raw {
         res *= 36;
         res += match c {
-            b'0'..=b'9' => (c - b'0') as u64,
-            b'A'..=b'Z' => (c - b'A' + 10) as u64,
+            b'0'..=b'9' => u64::from(c - b'0'),
+            b'A'..=b'Z' => u64::from(c - b'A' + 10),
             _ => return None,
         }
     }
@@ -87,15 +93,16 @@ pub fn fold_isin_unchecked(raw: [u8; 12]) -> Option<ISIN> {
 ///
 /// check digit will be calculated and used instead of one present
 /// in the array
+#[must_use]
 pub fn check_and_fold(mut raw: [u8; 12]) -> Option<ISIN> {
     let mut res: u64 = 0;
     raw[11] = luhn3::checksum(&raw[..11])?;
 
-    for c in raw.iter() {
+    for c in &raw {
         res *= 36;
         res += match c {
-            b'0'..=b'9' => (c - b'0') as u64,
-            b'A'..=b'Z' => (c - b'A' + 10) as u64,
+            b'0'..=b'9' => u64::from(c - b'0'),
+            b'A'..=b'Z' => u64::from(c - b'A' + 10),
             _ => return None,
         }
     }
@@ -103,6 +110,7 @@ pub fn check_and_fold(mut raw: [u8; 12]) -> Option<ISIN> {
 }
 
 /// unfolds a valid ISIN into an array of ASCII bytes, see [`fold_isin`]
+#[must_use]
 pub fn unfold_isin(isin: ISIN) -> [u8; 12] {
     let mut isin = isin.0;
     let mut res = [0; 12];

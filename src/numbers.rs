@@ -2,23 +2,27 @@
 //!
 //! At the moment only serialization bits are used
 
-use crate::primitives::*;
-use crate::*;
-
-#[derive(Copy, Clone, Default)]
+use crate::primitives::{fold_digits, unfold_digits};
+use crate::{HasWidth, Parsergen};
 
 /// Implements Parsergen for fixed width numbers
+#[derive(Copy, Clone, Default)]
 pub struct FixedT<T, const WIDTH: usize>(pub T);
 impl<T, const WIDTH: usize> HasWidth for FixedT<T, WIDTH> {
     const WIDTH: usize = WIDTH;
 }
 impl<T, const WIDTH: usize> FixedT<T, WIDTH> {
-    pub fn new(val: T) -> Self {
+    pub const fn new(val: T) -> Self {
         Self(val)
     }
 }
 
 /// used internally to serialize arrays of of items
+///
+/// # Panics
+///
+/// Panics if invariant of `WIDTH == FWIDTH * CNT` is not maintained. This invariant is enforced
+/// by proc macros
 pub fn ser_fixed_array<T, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
     arr: [T; CNT],
     raw: &mut [u8; WIDTH],
@@ -28,8 +32,8 @@ pub fn ser_fixed_array<T, const WIDTH: usize, const FWIDTH: usize, const CNT: us
 {
     assert_eq!(WIDTH, FWIDTH * CNT);
     for (ix, chunk) in raw.chunks_mut(FWIDTH).enumerate() {
-        let buf = <&mut [u8; FWIDTH]>::try_from(chunk).unwrap();
-        FixedT::new(arr[ix]).ser(buf)
+        let buf = <&mut [u8; FWIDTH]>::try_from(chunk).expect("Function misuse");
+        FixedT::new(arr[ix]).ser(buf);
     }
 }
 

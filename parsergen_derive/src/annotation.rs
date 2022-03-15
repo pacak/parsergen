@@ -1,7 +1,9 @@
 use proc_macro2::TokenStream;
-use quote::*;
-use std::iter::FromIterator;
-use syn::{parse::Parse, punctuated::Punctuated, *};
+use quote::ToTokens;
+use syn::{
+    parse, parse::Parse, punctuated::Punctuated, token, Error, Ident, LitInt, LitStr, Result,
+    Token, Type,
+};
 
 #[derive(Debug)]
 pub enum Annotation {
@@ -44,8 +46,11 @@ impl Literal {
 impl ToTokens for Literal {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         token::Bracket::default().surround(tokens, |t| {
-            Punctuated::<_, Token![,]>::from_iter(self.0.iter()).to_tokens(t)
-        })
+            self.0
+                .iter()
+                .collect::<Punctuated<_, Token![,]>>()
+                .to_tokens(t);
+        });
     }
 }
 

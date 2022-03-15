@@ -8,7 +8,7 @@ pub mod primitives;
 pub mod time;
 pub use crate::numbers::*;
 
-use crate::primitives::*;
+use crate::primitives::{fold_digits, fold_isin, unfold_digits};
 pub use arrayref;
 pub use parsergen_derive::*;
 
@@ -36,7 +36,7 @@ impl<'a, T: Parsergen<W>, const W: usize> std::fmt::Debug for ValidBytes<'a, T, 
 
 impl<'a, const W: usize> std::fmt::Debug for ValidBytes<'a, Unsigned, W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let valid = self.raw.iter().all(|&c| c >= b'0' && c <= b'9');
+        let valid = self.raw.iter().all(|&c| (b'0'..=b'9').contains(&c));
         if valid {
             write!(f, "{:?}", PrettyBytes(self.raw))
         } else {
@@ -49,7 +49,7 @@ impl<'a, const W: usize> std::fmt::Debug for ValidBytes<'a, Signed, W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let first_valid = !self.raw.is_empty()
             && (self.raw[0] == b' ' || self.raw[0] == b'-' || self.raw[0] == b'0');
-        let tail_valid = self.raw.iter().skip(1).all(|&c| c >= b'0' && c <= b'9');
+        let tail_valid = self.raw.iter().skip(1).all(|&c| (b'0'..=b'9').contains(&c));
         if first_valid && tail_valid {
             write!(f, "{:?}", PrettyBytes(self.raw))
         } else {
@@ -81,6 +81,10 @@ where
 
     /// split a slice into array and annotate it with how it would be parsed  instead of actually
     /// parsing it
+    ///
+    /// # Errors
+    ///
+    /// uses `write!` internally
     fn slice(raw: &[u8], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
     where
         Self: Sized,
@@ -91,6 +95,10 @@ where
     /// parse thing from a slice
     ///
     /// Err indicates invalid length, None indicates invalid content
+    ///
+    /// # Errors
+    ///
+    /// Fails with `TryFromSliceError` if input length is not `W`
     fn decode(raw: &[u8]) -> Result<Option<Self>, TryFromSliceError>
     where
         Self: Sized,
@@ -134,7 +142,8 @@ impl<'a> From<&'a [u8]> for PrettyBytes<'a> {
 pub struct PrettyArrBytes<'a, const N: usize>(pub &'a [u8]);
 
 impl<'a, const N: usize> PrettyArrBytes<'a, N> {
-    pub fn new(val: &'a [u8]) -> Self {
+    #[must_use]
+    pub const fn new(val: &'a [u8]) -> Self {
         Self(val)
     }
 }
@@ -150,12 +159,8 @@ impl<const N: usize> std::fmt::Debug for PrettyArrBytes<'_, N> {
 /// parse a static pattern into a default value
 ///
 /// used internally
-pub fn parse_literal<'a, T: Default>(lit: &'static [u8], raw: &'a [u8]) -> Option<T> {
-    if lit == raw {
-        Some(T::default())
-    } else {
-        None
-    }
+pub fn parse_literal<T: Default>(lit: &'static [u8], raw: &[u8]) -> Option<T> {
+    (lit == raw).then(T::default)
 }
 
 /// used for sliced printing of unparsed messages
@@ -234,7 +239,7 @@ impl<const WIDTH: usize> Parsergen<WIDTH> for Filler<WIDTH> {
 
     fn ser(&self, res: &mut [u8; WIDTH]) {
         for c in res.iter_mut() {
-            *c = b' '
+            *c = b' ';
         }
     }
 }
@@ -257,7 +262,7 @@ impl<T: Parsergen<WIDTH> + HasWidth, const WIDTH: usize> Parsergen<WIDTH> for Op
             Some(nested) => nested.ser(res),
             None => {
                 for c in res.iter_mut() {
-                    *c = b' '
+                    *c = b' ';
                 }
             }
         }
@@ -273,6 +278,12 @@ impl<T: Parsergen<WIDTH> + HasWidth, const WIDTH: usize> Parsergen<WIDTH> for Op
 }
 
 /// used internally to parse arrays of of items
+///
+/// # Panics
+///
+/// Panics if invariant of `WIDTH == FWIDTH * CNT` is not maintained. This invariant is enforced
+/// by proc macros
+#[must_use]
 pub fn des_array<
     T: Parsergen<FWIDTH> + Default + Copy,
     const WIDTH: usize,
@@ -285,26 +296,31 @@ pub fn des_array<
 
     assert_eq!(WIDTH, FWIDTH * CNT);
     for (ix, chunk) in raw.chunks(FWIDTH).enumerate() {
-        let buf = <[u8; FWIDTH]>::try_from(chunk).unwrap();
+        let buf = <[u8; FWIDTH]>::try_from(chunk).expect("Function is misused");
         res[ix] = T::des(&buf)?;
     }
     Some(res)
 }
 
-/// used internally to parse arrays of of items
+/// Used internally to parse arrays of of items
+///
+/// # Panics
+///
+/// Panics if invariant of `WIDTH == FWIDTH * CNT` is not maintained. This invariant is enforced
+/// by proc macros
+#[must_use]
 pub fn des_iso_array<T, Iso, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
     raw: &[u8; WIDTH],
 ) -> Option<[T; CNT]>
 where
     Iso: Parsergen<FWIDTH>,
-    T: Default + Copy,
-    T: From<Iso>,
+    T: Default + Copy + From<Iso>,
 {
     let mut res = [T::default(); CNT];
 
     assert_eq!(WIDTH, FWIDTH * CNT);
     for (ix, chunk) in raw.chunks(FWIDTH).enumerate() {
-        let buf = <[u8; FWIDTH]>::try_from(chunk).unwrap();
+        let buf = <[u8; FWIDTH]>::try_from(chunk).expect("Functions is misused");
         res[ix] = T::try_from(Iso::des(&buf)?).ok()?;
     }
 
@@ -312,6 +328,11 @@ where
 }
 
 /// used internally to serialize arrays of of items
+///
+/// # Panics
+///
+/// Panics if invariant of `WIDTH == FWIDTH * CNT` is not maintained. This invariant is enforced
+/// by proc macros
 pub fn ser_array<
     T: Parsergen<FWIDTH> + Default + Copy,
     const WIDTH: usize,
@@ -323,12 +344,17 @@ pub fn ser_array<
 ) {
     assert_eq!(WIDTH, FWIDTH * CNT);
     for (ix, chunk) in raw.chunks_mut(FWIDTH).enumerate() {
-        let buf = <&mut [u8; FWIDTH]>::try_from(chunk).unwrap();
-        arr[ix].ser(buf)
+        let buf = <&mut [u8; FWIDTH]>::try_from(chunk).expect("Function is misused");
+        arr[ix].ser(buf);
     }
 }
 
 /// used internally to serialize arrays of of items
+///
+/// # Panics
+///
+/// Panics if invariant of `WIDTH == FWIDTH * CNT` is not maintained. This invariant is enforced
+/// by proc macros
 pub fn ser_iso_array<T, Iso, const WIDTH: usize, const FWIDTH: usize, const CNT: usize>(
     arr: [T; CNT],
     raw: &mut [u8; WIDTH],
@@ -338,9 +364,9 @@ pub fn ser_iso_array<T, Iso, const WIDTH: usize, const FWIDTH: usize, const CNT:
 {
     assert_eq!(WIDTH, FWIDTH * CNT);
     for (ix, chunk) in raw.chunks_mut(FWIDTH).enumerate() {
-        let buf = <&mut [u8; FWIDTH]>::try_from(chunk).unwrap();
+        let buf = <&mut [u8; FWIDTH]>::try_from(chunk).expect("Function is misused");
 
-        Iso::from(arr[ix]).ser(buf)
+        Iso::from(arr[ix]).ser(buf);
     }
 }
 
@@ -370,8 +396,7 @@ impl<const WIDTH: usize> Parsergen<WIDTH> for Cents<WIDTH> {
         Self: Sized,
     {
         let sign = match raw[0] {
-            b' ' => 1,
-            b'0' => 1,
+            b' ' | b'0' => 1,
             b'-' => -1,
             _ => return None,
         };
@@ -391,7 +416,7 @@ impl<const WIDTH: usize> Parsergen<WIDTH> for Cents<WIDTH> {
         } else {
             raw[0] = b'-';
         }
-        let num = self.0.abs();
+        let num = self.0.abs() as u64;
         let num1 = num / 100;
         let num2 = num % 100;
         raw[WIDTH - 3] = b'.';

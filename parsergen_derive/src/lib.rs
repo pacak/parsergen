@@ -1,44 +1,46 @@
 use proc_macro2::{Span, TokenStream};
-use quote::*;
-use std::iter::FromIterator;
-use syn::{parse::Parse, punctuated::Punctuated, spanned::Spanned, *};
+use quote::{quote, ToTokens};
+use syn::{
+    braced, parenthesized, parse, parse::Parse, parse_macro_input, punctuated::Punctuated,
+    spanned::Spanned, token, Attribute, Error, Ident, LitInt, Result, Token, Type, TypeArray,
+    Visibility,
+};
 
 mod annotation;
 use crate::primitives::{parse_fixed_arr_inner, parse_fixed_impl, parse_fixed_inner, ParseInput};
 
-use self::annotation::*;
+use self::annotation::{Annotation, Literal};
 
 mod primitives;
 
 #[proc_macro_derive(Parsergen, attributes(parsergen))]
 pub fn derive_decode(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    match derive_decode_impl(parse_macro_input!(input as DecodeInput)) {
-        Ok(ok) => ok.into(),
-        Err(err) => err.to_compile_error().into(),
-    }
+    derive_decode_impl(parse_macro_input!(input as DecodeInput)).into()
 }
 
-/// parse_fixed!(u32, 12[!])
+/// generate optimal SWAR parser for decimal fixed width input
+///
+/// example: `parse_fixed!(u32, 12)`
 /// produces a fn(input: [u8; 12]) -> Option<u32>
 #[proc_macro]
 pub fn parse_fixed(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    #[allow(clippy::let_and_return)]
     let x = parse_fixed_impl(parse_macro_input!(input as ParseInput)).into();
     // println!("{}", x);
     x
 }
 
-fn derive_decode_impl(input: DecodeInput) -> Result<TokenStream> {
-    let r = match input {
-        DecodeInput::Struct(StructInput::Fields(x)) => for_struct_with_fields(x),
-        DecodeInput::Struct(StructInput::Unit(x)) => for_unit_struct(x),
-        DecodeInput::Enum(x) => for_enum(x),
-    }?;
-    //println!("{}", r);
-    Ok(r)
+fn derive_decode_impl(input: DecodeInput) -> TokenStream {
+    #[allow(clippy::let_and_return)]
+    match input {
+        DecodeInput::Struct(StructInput::Fields(x)) => for_struct_with_fields(&x),
+        DecodeInput::Struct(StructInput::Unit(x)) => for_unit_struct(&x),
+        DecodeInput::Enum(x) => for_enum(&x),
+    }
 }
 
-fn for_enum(input: EnumInput) -> Result<TokenStream> {
-    let EnumInput { ty, width, .. } = &input;
+fn for_enum(input: &EnumInput) -> TokenStream {
+    let EnumInput { ty, width, .. } = input;
     let ty_str = ty.to_string();
 
     let checks = input.variants.iter().map(|f| match f {
@@ -85,7 +87,7 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
         }
     });
 
-    let r = quote! {
+    quote! {
 
         impl ::parsergen::HasWidth for #ty {
             const WIDTH: usize = #width;
@@ -111,15 +113,14 @@ fn for_enum(input: EnumInput) -> Result<TokenStream> {
                 .finish()
             }
         }
-    };
-    Ok(r)
+    }
 }
 
-fn for_unit_struct(input: StructUnit) -> Result<TokenStream> {
-    let StructUnit { ty, literal, .. } = &input;
+fn for_unit_struct(input: &StructUnit) -> TokenStream {
+    let StructUnit { ty, literal, .. } = input;
     let width = input.literal.len();
     let ty_str = ty.to_string();
-    let r = quote! {
+    quote! {
 
         impl ::parsergen::HasWidth for #ty {
             const WIDTH: usize = #width;
@@ -145,12 +146,11 @@ fn for_unit_struct(input: StructUnit) -> Result<TokenStream> {
                 .finish()
             }
         }
-    };
-    Ok(r)
+    }
 }
 
-fn for_struct_with_fields(input: StructFields) -> Result<TokenStream> {
-    let StructFields { ty, width, .. } = &input;
+fn for_struct_with_fields(input: &StructFields) -> TokenStream {
+    let StructFields { ty, width, .. } = input;
     let ty_str = ty.to_string();
     let offsets = input.offsets().collect::<Vec<_>>();
 
@@ -208,7 +208,7 @@ fn for_struct_with_fields(input: StructFields) -> Result<TokenStream> {
     };
 
     let self_constr = input.self_constr();
-    let r = quote! {
+    quote! {
 
         impl ::parsergen::HasWidth for #ty {
             const WIDTH: usize = #width;
@@ -238,8 +238,7 @@ fn for_struct_with_fields(input: StructFields) -> Result<TokenStream> {
                 d.finish()
             }
         }
-    };
-    Ok(r)
+    }
 }
 
 struct SelfConstr {
@@ -250,9 +249,9 @@ struct SelfConstr {
 impl ToTokens for SelfConstr {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         if self.named {
-            token::Brace::default().surround(tokens, |t| self.contents.to_tokens(t))
+            token::Brace::default().surround(tokens, |t| self.contents.to_tokens(t));
         } else {
-            token::Paren::default().surround(tokens, |t| self.contents.to_tokens(t))
+            token::Paren::default().surround(tokens, |t| self.contents.to_tokens(t));
         }
     }
 }
@@ -281,9 +280,10 @@ impl Parse for StructInput {
         if input.peek(token::Brace) {
             let _ = braced!(content in input);
             let fields = content.parse_terminated(SField::parse_named)?;
-            let width = Punctuated::<TokenStream, Token![+]>::from_iter(
-                fields.iter().map(|f| f.width.clone()),
-            );
+            let width = fields
+                .iter()
+                .map(|f| f.width.clone())
+                .collect::<Punctuated<TokenStream, Token![+]>>();
             Ok(StructInput::Fields(StructFields {
                 ty,
                 named: true,
@@ -294,9 +294,10 @@ impl Parse for StructInput {
             let _ = parenthesized!(content in input);
 
             let fields = content.parse_terminated(SField::parse_unnamed)?;
-            let width = Punctuated::<TokenStream, Token![+]>::from_iter(
-                fields.iter().map(|f| f.width.clone()),
-            );
+            let width = fields
+                .iter()
+                .map(|f| f.width.clone())
+                .collect::<Punctuated<TokenStream, Token![+]>>();
             let r = StructInput::Fields(StructFields {
                 ty,
                 fields: sequence_fields(fields).collect(),
@@ -310,9 +311,8 @@ impl Parse for StructInput {
             let mut kind = FieldKind::Inherited;
             for attr in attrs {
                 if attr.path.is_ident("parsergen") {
-                    for a in attr
-                        .parse_args_with(Punctuated::<Annotation, Token![,]>::parse_terminated)?
-                        .into_iter()
+                    for a in
+                        attr.parse_args_with(Punctuated::<Annotation, Token![,]>::parse_terminated)?
                     {
                         match a {
                             Annotation::Literal(l) => kind = FieldKind::Literal(l),
@@ -449,14 +449,14 @@ impl SField {
         Self::parse(input, false)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn parse(input: parse::ParseStream, named: bool) -> Result<Self> {
         let mut kind = FieldKind::Inherited;
         let mut offset = None;
         for attr in input.call(Attribute::parse_outer)? {
             if attr.path.is_ident("parsergen") {
-                for a in attr
-                    .parse_args_with(Punctuated::<Annotation, Token![,]>::parse_terminated)?
-                    .into_iter()
+                for a in
+                    attr.parse_args_with(Punctuated::<Annotation, Token![,]>::parse_terminated)?
                 {
                     match a {
                         Annotation::Literal(l) => kind = FieldKind::Literal(l),
@@ -530,15 +530,15 @@ impl SField {
                 quote!(<#ty>::try_from(<#iso as ::parsergen::Parsergen<{#width}>>::des(slice)?).ok()?)
             }
             (FieldKind::Iso(iso), Some(TypeArray { len, elem, .. })) => {
-                let fwidth = quote!(<#iso as ::parsergen::HasWidth>::WIDTH);
-                quote!(::parsergen::des_iso_array::<#elem, #iso, {#fwidth * #len}, {#fwidth}, #len>(slice)?)
+                let field_width = quote!(<#iso as ::parsergen::HasWidth>::WIDTH);
+                quote!(::parsergen::des_iso_array::<#elem, #iso, {#field_width * #len}, {#field_width}, #len>(slice)?)
             }
             (FieldKind::Inherited, None) => {
                 quote!(<#ty as ::parsergen::Parsergen<{#width}>>::des(slice)?)
             }
             (FieldKind::Inherited, Some(TypeArray { len, elem, .. })) => {
-                let fwidth = quote!(<#elem as ::parsergen::HasWidth>::WIDTH);
-                quote!(::parsergen::des_array::<#elem, {#fwidth * #len}, {#fwidth}, #len>(slice)?)
+                let field_width = quote!(<#elem as ::parsergen::HasWidth>::WIDTH);
+                quote!(::parsergen::des_array::<#elem, {#field_width * #len}, {#field_width}, #len>(slice)?)
             }
         };
 
@@ -557,15 +557,15 @@ impl SField {
                 quote!(<#iso>::from(*var).ser(slice))
             }
             (FieldKind::Iso(iso), Some(TypeArray { len, elem, .. })) => {
-                let fwidth = quote!(<#iso as ::parsergen::HasWidth>::WIDTH);
-                quote!(::parsergen::ser_iso_array::<#elem, #iso, {#fwidth * #len}, {#fwidth}, #len>(*var, slice))
+                let field_width = quote!(<#iso as ::parsergen::HasWidth>::WIDTH);
+                quote!(::parsergen::ser_iso_array::<#elem, #iso, {#field_width * #len}, {#field_width}, #len>(*var, slice))
             }
             (FieldKind::Inherited, None) => {
                 quote!(<#ty as ::parsergen::Parsergen<{#width}>>::ser(var, slice))
             }
             (FieldKind::Inherited, Some(TypeArray { len, elem, .. })) => {
-                let fwidth = quote!(<#elem as ::parsergen::HasWidth>::WIDTH);
-                quote!(::parsergen::ser_array::<#elem, {#fwidth * #len}, {#fwidth}, #len>(*var, slice))
+                let field_width = quote!(<#elem as ::parsergen::HasWidth>::WIDTH);
+                quote!(::parsergen::ser_array::<#elem, {#field_width * #len}, {#field_width}, #len>(*var, slice))
             }
         };
 
@@ -591,25 +591,25 @@ impl SField {
                 quote!(::parsergen::Sliced::<#ty, {#width}>::from)
             }
             (FieldKind::Iso(ity), Some(TypeArray { .. })) => {
-                let fwidth = quote!(<#ity as ::parsergen::HasWidth>::WIDTH);
-                quote!((|slice|::parsergen::SlicedArr::<#ity, {#fwidth}>::from(slice)))
+                let field_width = quote!(<#ity as ::parsergen::HasWidth>::WIDTH);
+                quote!((|slice|::parsergen::SlicedArr::<#ity, {#field_width}>::from(slice)))
             }
             (FieldKind::Inherited, None) => {
                 quote!(::parsergen::Sliced::<#ty, {#width}>::from)
             }
             (FieldKind::Inherited, Some(TypeArray { elem, .. })) => {
-                let fwidth = quote!(<#elem as ::parsergen::HasWidth>::WIDTH);
-                quote!((|slice|::parsergen::SlicedArr::<#elem, {#fwidth}>::from(slice)))
+                let field_width = quote!(<#elem as ::parsergen::HasWidth>::WIDTH);
+                quote!((|slice|::parsergen::SlicedArr::<#elem, {#field_width}>::from(slice)))
             }
         };
         Ok(Self {
             name,
-            slicer,
             ty,
-            offset,
             width,
             parser,
             encoder,
+            slicer,
+            offset,
         })
     }
 }
@@ -668,8 +668,8 @@ impl Parse for EnumInput {
         };
         Ok(EnumInput {
             ty,
-            variants,
             width,
+            variants,
         })
     }
 }
@@ -685,9 +685,8 @@ impl Parse for EnumVariant {
         let mut kind = FieldKind::Inherited;
         for attr in input.call(Attribute::parse_outer)? {
             if attr.path.is_ident("parsergen") {
-                for a in attr
-                    .parse_args_with(Punctuated::<Annotation, Token![,]>::parse_terminated)?
-                    .into_iter()
+                for a in
+                    attr.parse_args_with(Punctuated::<Annotation, Token![,]>::parse_terminated)?
                 {
                     match a {
                         Annotation::Literal(l) => kind = FieldKind::Literal(l),
@@ -709,7 +708,7 @@ impl Parse for EnumVariant {
         if input.peek(Token![,]) {
             let literal = match kind {
                 FieldKind::Literal(lit) => lit,
-                _ => {
+                FieldKind::Fixed(_) | FieldKind::Iso(_) | FieldKind::Inherited => {
                     return Err(Error::new(
                         name.span(),
                         "Unit enum field must have literal/hex annotation",
@@ -727,9 +726,10 @@ impl Parse for EnumVariant {
             let _ = parenthesized!(content in input);
 
             let fields = content.parse_terminated(SField::parse_unnamed)?;
-            let width = Punctuated::<TokenStream, Token![+]>::from_iter(
-                fields.iter().map(|f| f.width.clone()),
-            );
+            let width = fields
+                .iter()
+                .map(|f| f.width.clone())
+                .collect::<Punctuated<TokenStream, Token![+]>>();
             let fields = StructFields {
                 ty: name,
                 fields: sequence_fields(fields).collect(),
@@ -742,9 +742,11 @@ impl Parse for EnumVariant {
             let _ = braced!(content in input);
 
             let fields = content.parse_terminated(SField::parse_named)?;
-            let width = Punctuated::<TokenStream, Token![+]>::from_iter(
-                fields.iter().map(|f| f.width.clone()),
-            );
+
+            let width = fields
+                .iter()
+                .map(|f| f.width.clone())
+                .collect::<Punctuated<TokenStream, Token![+]>>();
 
             let fields = StructFields {
                 ty: name,

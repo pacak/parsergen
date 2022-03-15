@@ -2,9 +2,9 @@ use crate::primitives::unfold_digits;
 
 const NS_IN_SEC: u64 = 1_000_000_000;
 
-/// Parse time in HHMMSS format
+/// Parse time in `HHMMSS` format
 ///
-/// Parses time given as HHMMSS into nanoseconds since the beginning of the day
+/// Parses time given as `HHMMSS` into nanoseconds since the beginning of the day
 /// `HHMMSS` means 6 digits, no extra symbols. There's no additional checks on
 /// time validity: `read_time6` will accept `25:99:99`.
 /// # Examples
@@ -14,7 +14,7 @@ const NS_IN_SEC: u64 = 1_000_000_000;
 /// let r = read_time6(input).unwrap();
 /// assert_eq!(r, 1_000_000_000);
 /// ```
-
+#[must_use]
 pub fn read_time6(raw: &[u8; 6]) -> Option<u64> {
     const ADD: u64 = u64::from_le_bytes([b'F'; 8]);
     const SUB: u64 = u64::from_le_bytes([b'0'; 8]);
@@ -27,10 +27,10 @@ pub fn read_time6(raw: &[u8; 6]) -> Option<u64> {
     let a = v.wrapping_add(ADD);
     let v = v.wrapping_sub(SUB);
     if (a | v) & MASK == 0 {
-        let v = v << 16;
-        let v = v.wrapping_mul(0x0A01) >> 8;
-        let v = (v & 0x00FF00FF00FF00FF).wrapping_mul(0x3C0001) >> 16;
-        let v = (v & 0x0000FFFF0000FFFF).wrapping_mul(0xE1000000001) >> 32;
+        let v = v << 16i32;
+        let v = v.wrapping_mul(0x0A01) >> 8i32;
+        let v = (v & 0x00FF00FF00FF00FF).wrapping_mul(0x3C0001) >> 16i32;
+        let v = (v & 0x0000FFFF0000FFFF).wrapping_mul(0xE1000000001) >> 32i32;
         Some(v * NS_IN_SEC)
     } else {
         None
@@ -46,10 +46,10 @@ fn test_read_time6() {
     assert_eq!(read_time6(b"xxxxx0"), None);
 }
 
-/// Parse time in HHMMSSss format
+/// Parse time in `HHMMSSss` format
 ///
-/// Parses time given as HHMMSSqq into nanoseconds since the beginning of the day
-/// `HHMMSSqq` means 8 digits, no extra symbols. There's no additional checks on
+/// Parses time given as `HHMMSSss` into nanoseconds since the beginning of the day
+/// `HHMMSSss` means 8 digits, no extra symbols. There's no additional checks on
 /// time validity: `read_time8` will accept `25:99:99.22`.
 /// # Examples
 /// ```rust
@@ -58,7 +58,8 @@ fn test_read_time6() {
 /// let r = read_time6(input).unwrap();
 /// assert_eq!(r, 1_000_000_000);
 /// ```
-pub fn read_time8(raw: &[u8; 8]) -> Option<u64> {
+#[must_use]
+pub const fn read_time8(raw: &[u8; 8]) -> Option<u64> {
     const ADD: u64 = u64::from_le_bytes([b'F'; 8]);
     const SUB: u64 = u64::from_le_bytes([b'0'; 8]);
     const MASK: u64 = u64::from_le_bytes([0x80; 8]);
@@ -67,11 +68,11 @@ pub fn read_time8(raw: &[u8; 8]) -> Option<u64> {
     let a = v.wrapping_add(ADD);
     let v = v.wrapping_sub(SUB);
     if (a | v) & MASK == 0 {
-        let v = v.wrapping_mul(0x0A01) >> 8;
-        let frac = (v >> 48) & 0xff;
-        let v = v << 16;
-        let v = (v & 0x00FF00FF00FF00FF).wrapping_mul(0x3C0001) >> 16;
-        let v = (v & 0x0000FFFF0000FFFF).wrapping_mul(0xE1000000001) >> 32;
+        let v = v.wrapping_mul(0x0A01) >> 8i32;
+        let frac = (v >> 48i32) & 0xff;
+        let v = v << 16i32;
+        let v = (v & 0x00FF00FF00FF00FF).wrapping_mul(0x3C0001) >> 16i32;
+        let v = (v & 0x0000FFFF0000FFFF).wrapping_mul(0xE1000000001) >> 32i32;
         Some(v * NS_IN_SEC + frac * NS_IN_SEC / 100)
     } else {
         None
@@ -88,9 +89,9 @@ fn test_read_time8() {
     assert_eq!(read_time8(b"00000012"), Some(NS_IN_SEC / 100 * 12));
 }
 
-/// Parse time in HHMMSS format
+/// Parse time in `HHMMSSuuuuuu` format
 ///
-/// Parses time given as HHMMSSuuuuuu into nanoseconds since the beginning of the day
+/// Parses time given as `HHMMSSuuuuuu` into nanoseconds since the beginning of the day
 /// `HHMMSSuuuuuu` means 12 digits, no extra symbols. There's no additional checks on
 /// time validity: `read_time12` will accept `25:99:99.123456`.
 /// # Examples
@@ -100,38 +101,38 @@ fn test_read_time8() {
 /// let r = read_time12(input).unwrap();
 /// assert_eq!(r, 1_000_000_000);
 /// ```
+#[must_use]
 pub fn read_time12(raw: &[u8; 12]) -> Option<u64> {
-    let hi;
-    let lo;
-
     const ADD: u64 = u64::from_le_bytes([b'F'; 8]);
     const SUB: u64 = u64::from_le_bytes([b'0'; 8]);
     const MASK: u64 = u64::from_le_bytes([0x80; 8]);
+    let hi;
+    let lo;
     {
-        let raw = raw[0..8].try_into().unwrap();
+        let raw: [u8; 8] = raw[0..8].try_into().expect("");
         let v = u64::from_le_bytes(raw);
         let a = v.wrapping_add(ADD);
         let v = v.wrapping_sub(SUB);
         if (a | v) & MASK == 0 {
-            let v = v << 16;
-            let v = v.wrapping_mul(0x0A01) >> 8;
-            let v = (v & 0x00FF00FF00FF00FF).wrapping_mul(0x3C0001) >> 16;
-            let v = (v & 0x0000FFFF0000FFFF).wrapping_mul(0xE1000000001) >> 32;
+            let v = v << 16i32;
+            let v = v.wrapping_mul(0x0A01) >> 8i32;
+            let v = (v & 0x00FF00FF00FF00FF).wrapping_mul(0x3C0001) >> 16i32;
+            let v = (v & 0x0000FFFF0000FFFF).wrapping_mul(0xE1000000001) >> 32i32;
             hi = v;
         } else {
             return None;
         }
     }
     {
-        let raw = raw[4..12].try_into().unwrap();
+        let raw: [u8; 8] = raw[4..12].try_into().expect("12 - 4 = 8");
         let v = u64::from_le_bytes(raw);
         let a = v.wrapping_add(ADD);
         let v = v.wrapping_sub(SUB);
         if (a | v) & MASK == 0 {
-            let v = v >> 16 << 16;
-            let v = v.wrapping_mul(0x0A01) >> 8;
-            let v = (v & 0x00FF00FF00FF00FF).wrapping_mul(0x640001) >> 16;
-            let v = (v & 0x0000FFFF0000FFFF).wrapping_mul(0x271000000001) >> 32;
+            let v = v >> 16i32 << 16i32;
+            let v = v.wrapping_mul(0x0A01) >> 8i32;
+            let v = (v & 0x00FF00FF00FF00FF).wrapping_mul(0x640001) >> 16i32;
+            let v = (v & 0x0000FFFF0000FFFF).wrapping_mul(0x271000000001) >> 32i32;
             lo = v;
         } else {
             return None;
@@ -150,13 +151,8 @@ fn test_read_time12() {
     assert_eq!(read_time12(b"000000120000"), Some(NS_IN_SEC / 100 * 12));
 }
 
-/// Write time given in microseconds into HHMMSSuu format,
-///
-/// panics if res is not 8 bytes long
-/// panics if duration is above 24 hours
-pub fn write_time6(time: u64, res: &mut [u8]) {
-    assert!(res.len() == 6);
-    assert!(time <= 86400 * NS_IN_SEC); // 24:00:00.000000
+/// Write time given in microseconds into `HHMMSSuu` format,
+pub fn write_time6(time: u64, res: &mut [u8; 6]) {
     let seconds = time / NS_IN_SEC;
     let h = seconds / 3600;
     let m = (seconds / 60) % 60;
@@ -166,11 +162,8 @@ pub fn write_time6(time: u64, res: &mut [u8]) {
     unfold_digits(s, &mut res[4..6]);
 }
 
-/// Write time given in microseconds into HHMMSSuu format,
-///
-/// panics if res is not 8 bytes long
-pub fn write_time8(time: u64, res: &mut [u8]) {
-    assert!(res.len() == 8);
+/// Write time given in microseconds into `HHMMSSuu` format,
+pub fn write_time8(time: u64, res: &mut [u8; 8]) {
     let seconds = time / NS_IN_SEC;
     let n = time % NS_IN_SEC * 100 / NS_IN_SEC;
     let h = seconds / 3600;
@@ -182,11 +175,8 @@ pub fn write_time8(time: u64, res: &mut [u8]) {
     unfold_digits(n, &mut res[6..8]);
 }
 
-/// Write time given in microseconds into HHMMSSuuuuuu format,
-///
-/// panics if res is not 12 bytes long
-pub fn write_time12(time: u64, res: &mut [u8]) {
-    assert!(res.len() == 12);
+/// Write time given in microseconds into `HHMMSSuuuuuu` format,
+pub fn write_time12(time: u64, res: &mut [u8; 12]) {
     let seconds = time / NS_IN_SEC;
     let n = time % NS_IN_SEC / 1000;
     let h = seconds / 3600;

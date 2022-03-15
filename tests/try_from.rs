@@ -17,8 +17,8 @@ where
 
 #[test]
 fn can_parse_small_values() {
-    assert_eq!(X::des(b"0100"), Some(X { field: 100 }));
-    assert_eq!(X::des(b"0255"), Some(X { field: 255 }));
+    roundtrip(b"0100", X { field: 100 });
+    roundtrip(b"0255", X { field: 255 });
 }
 
 #[test]
