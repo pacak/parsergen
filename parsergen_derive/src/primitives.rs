@@ -29,33 +29,31 @@ impl Parse for ParseInput {
 pub fn get_style(ty: &Type) -> Result<Style> {
     match ty {
         Type::Group(TypeGroup { elem: ty, .. }) => get_style(ty),
-        Type::Path(TypePath { path: p, .. }) => Ok(if p.is_ident("u8") {
-            Style::Unsigned
-        } else if p.is_ident("u16") {
-            Style::Unsigned
-        } else if p.is_ident("u32") {
-            Style::Unsigned
-        } else if p.is_ident("u64") {
-            Style::Unsigned
-        } else if p.is_ident("usize") {
-            Style::Unsigned
-        } else if p.is_ident("u128") {
-            Style::Unsigned
-        } else if p.is_ident("i8") {
-            Style::Signed(quote!(u8))
-        } else if p.is_ident("i16") {
-            Style::Signed(quote!(u16))
-        } else if p.is_ident("i32") {
-            Style::Signed(quote!(u32))
-        } else if p.is_ident("i64") {
-            Style::Signed(quote!(u64))
-        } else if p.is_ident("isize") {
-            Style::Signed(quote!(usize))
-        } else if p.is_ident("i128") {
-            Style::Signed(quote!(u128))
-        } else {
-            return Err(Error::new(ty.span(), "unsupported type"));
-        }),
+        Type::Path(TypePath { path: p, .. }) => Ok(
+            if p.is_ident("u8")
+                || p.is_ident("u16")
+                || p.is_ident("u32")
+                || p.is_ident("u64")
+                || p.is_ident("usize")
+                || p.is_ident("u128")
+            {
+                Style::Unsigned
+            } else if p.is_ident("i8") {
+                Style::Signed(quote!(u8))
+            } else if p.is_ident("i16") {
+                Style::Signed(quote!(u16))
+            } else if p.is_ident("i32") {
+                Style::Signed(quote!(u32))
+            } else if p.is_ident("i64") {
+                Style::Signed(quote!(u64))
+            } else if p.is_ident("isize") {
+                Style::Signed(quote!(usize))
+            } else if p.is_ident("i128") {
+                Style::Signed(quote!(u128))
+            } else {
+                return Err(Error::new(ty.span(), "unsupported type"));
+            },
+        ),
         _ => Err(Error::new(ty.span(), "unsupported type")),
     }
 }
