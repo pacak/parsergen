@@ -133,9 +133,9 @@ struct X13i {
     i8_: i8,
     #[parsergen(decimal: 6, offset: 4)]
     i16_: i16,
-    #[parsergen(decimal: 11)]
+    #[parsergen(decimal: 11, offset: 10)]
     i32_: i32,
-    #[parsergen(decimal: 21)]
+    #[parsergen(decimal: 21, offset: 21)]
     i64_: i64,
     #[parsergen(decimal: 21)]
     isize_: isize,

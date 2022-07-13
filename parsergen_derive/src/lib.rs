@@ -414,7 +414,7 @@ fn sequence_fields(i: Punctuated<SField, Token![,]>) -> impl Iterator<Item = Seq
             Some(expected) => {
                 let actual = OffsetName(ix);
                 quote! {
-                    const CHECK: usize = (#expected == #actual) as usize - 1;
+                    assert_eq!(#expected, #actual);
                 }
             }
             None => TokenStream::new(),
