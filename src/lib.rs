@@ -89,7 +89,8 @@ where
     where
         Self: Sized,
     {
-        write!(f, "{:?}", PrettyBytes::from(raw))
+        let typ = PhantomData;
+        write!(f, "{:?}", ValidBytes::<Self, W> { typ, raw })
     }
 
     /// parse thing from a slice

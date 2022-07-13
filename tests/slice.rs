@@ -11,6 +11,20 @@ fn has_decor(s: &str) -> bool {
 }
 
 #[test]
+fn cents_working() {
+    // wrong body
+    assert!(has_decor(&format!(
+        "{:?}",
+        Sliced::<Cents<4>, 4>::from(b"00.0".as_slice())
+    )));
+    // good
+    assert!(!has_decor(&format!(
+        "{:?}",
+        Sliced::<Cents<4>, 4>::from(b"0.00".as_slice())
+    )));
+}
+
+#[test]
 fn num_errors_are_labelled() {
     // wrong sign
     assert!(has_decor(&format!(
@@ -31,7 +45,7 @@ fn num_errors_are_labelled() {
     )));
 }
 
-#[derive(Parsergen)]
+#[derive(Debug, Parsergen)]
 enum Dir {
     #[parsergen(literal: "a")]
     Ask,
