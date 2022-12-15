@@ -1,6 +1,6 @@
 [package]
 name = "parsergen"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 autotests = false
 
@@ -9,7 +9,7 @@ autotests = false
 [dependencies]
 arrayref = "0.3"
 luhn3 = { version = "1.1.0" }
-parsergen_derive = { path = "./parsergen_derive", version = "0.3.1" }
+parsergen_derive = { path = "./parsergen_derive", version = "=0.3.3" }
 
 [dev-dependencies]
 criterion = { version = "0.3.5", features=["html_reports"] }
