@@ -42,6 +42,8 @@ name = "try_from"
 [[test]]
 name = "slice"
 
+[[test]]
+name = "offset"
 
 [workspace]
 members = [".", "parsergen_derive"]

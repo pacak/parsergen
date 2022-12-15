@@ -399,26 +399,33 @@ struct SeqField {
 }
 
 fn sequence_fields(i: Punctuated<SField, Token![,]>) -> impl Iterator<Item = SeqField> {
-    i.into_iter().enumerate().map(|(ix, field)| SeqField {
-        name: match field.name {
+    i.into_iter().enumerate().map(|(ix, field)| {
+        let name = match field.name {
             Some(n) => n,
             None => Ident::new(&format!("var_{}", ix), Span::call_site()),
-        },
-        ty: field.ty,
-        width: field.width,
-        range: (OffsetName(ix), OffsetName(ix + 1)),
-        parser: field.parser,
-        encoder: field.encoder,
-        slicer: field.slicer,
-        offset_assert: match field.offset {
-            Some(expected) => {
-                let actual = OffsetName(ix);
-                quote! {
-                    assert_eq!(#expected, #actual);
+        };
+        SeqField {
+            ty: field.ty,
+            width: field.width,
+            range: (OffsetName(ix), OffsetName(ix + 1)),
+            parser: field.parser,
+            encoder: field.encoder,
+            slicer: field.slicer,
+            offset_assert: match field.offset {
+                Some(expected) => {
+                    let actual = OffsetName(ix);
+                    quote! {
+                        const _: () = {
+                            if #expected != #actual {
+                                panic!(concat!("Offset mismatch on field ", stringify!(#name)))
+                            }
+                        }
+                    }
                 }
-            }
-            None => TokenStream::new(),
-        },
+                None => TokenStream::new(),
+            },
+            name,
+        }
     })
 }
 
