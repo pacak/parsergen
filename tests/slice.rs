@@ -11,6 +11,23 @@ fn has_decor(s: &str) -> bool {
 }
 
 #[test]
+fn fixed_working() {
+    let x = Fixed::<1, 2, i64>::des(b"0.00");
+    assert_eq!(x, Some(Fixed(0)));
+
+    // wrong body
+    assert!(has_decor(&format!(
+        "{:?}",
+        Sliced::<Fixed<2, 1, i64>, 4>::from(b"00.0".as_slice())
+    )));
+    // good
+    assert!(!has_decor(&format!(
+        "{:?}",
+        Sliced::<Fixed<1, 2, i64>, 4>::from(b"0.00".as_slice())
+    )));
+}
+
+#[test]
 fn cents_working() {
     // wrong body
     assert!(has_decor(&format!(

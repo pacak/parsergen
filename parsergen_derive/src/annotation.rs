@@ -82,13 +82,7 @@ pub struct AsciiLiteral(pub Literal);
 impl Parse for AsciiLiteral {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         Ok(AsciiLiteral(Literal(
-            input
-                .parse::<LitStr>()?
-                .value()
-                .as_bytes()
-                .iter()
-                .copied()
-                .collect::<Vec<u8>>(),
+            input.parse::<LitStr>()?.value().into_bytes(),
         )))
     }
 }

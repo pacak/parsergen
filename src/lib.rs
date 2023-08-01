@@ -11,7 +11,7 @@ mod cents;
 
 use crate::primitives::fold_isin;
 pub use arrayref; // :thinking:
-pub use cents::Cents;
+pub use cents::{Cents, Fixed};
 pub use parsergen_derive::*;
 
 pub trait HasWidth {
@@ -38,7 +38,7 @@ impl<'a, T: Parsergen<W>, const W: usize> std::fmt::Debug for ValidBytes<'a, T, 
 
 impl<'a, const W: usize> std::fmt::Debug for ValidBytes<'a, Unsigned, W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let valid = self.raw.iter().all(|&c| (b'0'..=b'9').contains(&c));
+        let valid = self.raw.iter().all(|c| c.is_ascii_digit());
         if valid {
             write!(f, "{:?}", PrettyBytes(self.raw))
         } else {
@@ -51,7 +51,7 @@ impl<'a, const W: usize> std::fmt::Debug for ValidBytes<'a, Signed, W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let first_valid = !self.raw.is_empty()
             && (self.raw[0] == b' ' || self.raw[0] == b'-' || self.raw[0] == b'0');
-        let tail_valid = self.raw.iter().skip(1).all(|&c| (b'0'..=b'9').contains(&c));
+        let tail_valid = self.raw.iter().skip(1).all(|c| c.is_ascii_digit());
         if first_valid && tail_valid {
             write!(f, "{:?}", PrettyBytes(self.raw))
         } else {
@@ -202,7 +202,7 @@ pub struct SlicedOwned<T, const WIDTH: usize>(Vec<u8>, PhantomData<T>);
 
 impl<T, const WIDTH: usize> From<&[u8]> for SlicedOwned<T, WIDTH> {
     fn from(val: &[u8]) -> Self {
-        Self(Vec::from(val), PhantomData::default())
+        Self(Vec::from(val), PhantomData)
     }
 }
 

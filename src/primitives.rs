@@ -1,9 +1,29 @@
+pub trait FoldUnfold<Rhs = Self>:
+    std::ops::Mul<Output = Self>
+    + std::ops::Add<Output = Self>
+    + From<u8>
+    + Copy
+    + std::ops::Rem<Output = Self>
+where
+    Self: Sized,
+{
+}
+
+impl<T> FoldUnfold for T where
+    T: std::ops::Mul<Output = Self>
+        + std::ops::Add<Output = Self>
+        + From<u8>
+        + Copy
+        + std::ops::Rem<Output = Self>
+{
+}
+
 /// use `parse_fixed!` instead
 #[inline(always)]
 #[must_use]
 pub fn fold_digits<T>(digits: &[u8]) -> Option<T>
 where
-    T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8>,
+    T: FoldUnfold,
 {
     let mut acc: T = 0.into();
     for d in digits.iter() {
@@ -38,7 +58,7 @@ where
 #[must_use]
 pub fn fold_signed<T>(digits: &[u8]) -> Option<T>
 where
-    T: std::ops::Mul<Output = T> + std::ops::Add<Output = T> + From<u8> + std::ops::Neg<Output = T>,
+    T: FoldUnfold + std::ops::Neg<Output = T>,
 {
     let r = fold_digits(&digits[1..])?;
     match digits[0] as char {

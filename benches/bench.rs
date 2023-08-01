@@ -195,6 +195,21 @@ fn b_cents(c: &mut Criterion) {
     });
 }
 
+fn b_fixed(c: &mut Criterion) {
+    let input = b" 00001234.56";
+    c.bench_function("fixed 9+2 i128", |b| {
+        b.iter(|| {
+            Fixed::<9, 2, i128>::des(black_box(input)).unwrap();
+        })
+    });
+
+    c.bench_function("fixed 9+2 i64", |b| {
+        b.iter(|| {
+            Fixed::<9, 2, i64>::des(black_box(input)).unwrap();
+        })
+    });
+}
+
 fn b_fold_isin(c: &mut Criterion) {
     let input = b"AU0000XVGZA3";
     c.bench_function("fold_isin", |b| {
@@ -254,6 +269,7 @@ criterion_group!(
     b_fold_isin,
     b_unfold_isin,
     b_cents,
+    b_fixed,
     b_fut_pairs,
     b_fut_dir,
     b_fut_prices,
