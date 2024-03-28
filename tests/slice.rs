@@ -18,8 +18,15 @@ fn fixed_working() {
     // wrong body
     assert!(has_decor(&format!(
         "{:?}",
-        Sliced::<Fixed<2, 1, i64>, 4>::from(b"00.0".as_slice())
+        Sliced::<Fixed<2, 1, i64>, 4>::from(b"0x.0".as_slice()) // TODO, b"00.0" shouldn't be
+                                                                // valid!
     )));
+
+    assert_eq!(Fixed::<2, 1, i64>::des(b"01.2"), Some(Fixed(12)));
+    assert_eq!(Fixed::<2, 1, i64>::des(b"0.12"), None);
+    assert_eq!(Fixed::<1, 2, i64>::des(b"01.2"), None);
+    assert_eq!(Fixed::<1, 2, i64>::des(b"0.12"), Some(Fixed(12)));
+
     // good
     assert!(!has_decor(&format!(
         "{:?}",
