@@ -213,10 +213,16 @@ impl<T: Parsergen<WIDTH>, const WIDTH: usize> std::fmt::Debug for SlicedOwned<T,
 }
 
 /// consume and return an item without any parsing
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, PartialEq, Copy, Clone)]
 pub struct Blob<const WIDTH: usize>(pub [u8; WIDTH]);
 impl<const WIDTH: usize> HasWidth for Blob<WIDTH> {
     const WIDTH: usize = WIDTH;
+}
+
+impl<const WIDTH: usize> std::fmt::Debug for Blob<WIDTH> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        PrettyBytes::from(self.0.as_slice()).fmt(f)
+    }
 }
 
 impl<const WIDTH: usize> Parsergen<WIDTH> for Blob<WIDTH> {
