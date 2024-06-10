@@ -253,6 +253,24 @@ impl<const WIDTH: usize> Parsergen<WIDTH> for Filler<WIDTH> {
     }
 }
 
+/// consume an item without any parsing, fill back with 0 bytes
+#[derive(Eq, PartialEq, Copy, Clone, Debug, Default)]
+pub struct Filler0<const WIDTH: usize>;
+impl<const WIDTH: usize> HasWidth for Filler0<WIDTH> {
+    const WIDTH: usize = WIDTH;
+}
+impl<const WIDTH: usize> Parsergen<WIDTH> for Filler0<WIDTH> {
+    fn des(_raw: &[u8; WIDTH]) -> Option<Self> {
+        Some(Self)
+    }
+
+    fn ser(&self, res: &mut [u8; WIDTH]) {
+        for c in res.iter_mut() {
+            *c = 0;
+        }
+    }
+}
+
 impl<T: HasWidth> HasWidth for Option<T> {
     const WIDTH: usize = T::WIDTH;
 }
